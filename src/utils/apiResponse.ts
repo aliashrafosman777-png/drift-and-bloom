@@ -1,0 +1,52 @@
+import { NextResponse } from 'next/server'
+import { ZodError } from 'zod'
+
+interface ApiSuccessResponse<T = unknown> {
+  success: true
+  message: string
+  data: T
+}
+
+interface ApiErrorResponse {
+  success: false
+  message: string
+}
+
+/**
+ * Return a standardized success JSON response.
+ */
+export function successResponse<T = unknown>(
+  data: T,
+  message = 'Success',
+  status = 200
+): NextResponse<ApiSuccessResponse<T>> {
+  return NextResponse.json(
+    { success: true, message, data },
+    { status }
+  )
+}
+
+/**
+ * Return a standardized error JSON response.
+ */
+export function errorResponse(
+  message = 'Something went wrong',
+  status = 500
+): NextResponse<ApiErrorResponse> {
+  return NextResponse.json(
+    { success: false, message },
+    { status }
+  )
+}
+
+/**
+ * Format a ZodError into a human-readable error response.
+ */
+export function validationErrorResponse(
+  error: ZodError
+): NextResponse<ApiErrorResponse> {
+  const messages = error.issues.map(
+    (e) => `${e.path.join('.')}: ${e.message}`
+  )
+  return errorResponse(messages.join('; '), 400)
+}

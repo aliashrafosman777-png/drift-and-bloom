@@ -1,0 +1,42 @@
+{
+  "name": "drift-and-bloom-next",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "type-check": "tsc --noEmit"
+  },
+  "dependencies": {
+    "bcryptjs": "^3.0.3",
+    "chart.js": "^4.5.1",
+    "cloudinary": "^2.10.0",
+    "framer-motion": "^11.18.2",
+    "jsonwebtoken": "^9.0.3",
+    "lucide-react": "^1.22.0",
+    "mongoose": "^9.7.3",
+    "next": "^16.2.10",
+    "react": "^19.2.0",
+    "react-chartjs-2": "^5.3.1",
+    "react-dom": "^19.2.0",
+    "react-icons": "^5.7.0",
+    "resend": "^6.17.1",
+    "slugify": "^1.6.9",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@types/bcryptjs": "^2.4.6",
+    "@types/jsonwebtoken": "^9.0.10",
+    "@types/node": "^24.0.0",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "autoprefixer": "^10.5.2",
+    "eslint": "^9.0.0",
+    "eslint-config-next": "^16.2.10",
+    "postcss": "^8.5.16",
+    "tailwindcss": "^3.4.19",
+    "typescript": "^5.9.0"
+  }
+}
