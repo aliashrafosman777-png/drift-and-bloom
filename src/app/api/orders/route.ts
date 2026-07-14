@@ -232,35 +232,37 @@ export async function POST(req: NextRequest) {
       await order.populate('customer', 'firstName lastName email')
     }
 
-    // ── Step 7: Fire-and-forget email (never blocks order) ───────────
+    // ── Step 7: Send confirmation email (awaited so Vercel doesn't kill the promise) ──
     console.log('[Checkout] Sending confirmation email...')
-    sendOrderConfirmationEmail({
-      orderId: order._id.toString(),
-      fullName: order.fullName,
-      email: order.email,
-      items: order.items.map((item: any) => ({
-        name: item.name,
-        price: item.price,
-        quantity: item.quantity,
-        plantOption: item.plantOption,
-        image: item.image,
-      })),
-      subtotal: order.subtotal,
-      discount: order.discount,
-      shipping: order.shipping,
-      tax: order.tax,
-      total: order.total,
-      paymentMethod: order.paymentMethod,
-      paymentStatus: order.paymentStatus,
-      shippingAddress: order.shippingAddress,
-      notes: order.notes,
-      giftMessage: order.giftMessage,
-      createdAt: order.createdAt,
-    }).then(() => {
+    try {
+      await sendOrderConfirmationEmail({
+        orderId: order._id.toString(),
+        fullName: order.fullName,
+        email: order.email,
+        items: order.items.map((item: any) => ({
+          name: item.name,
+          price: item.price,
+          quantity: item.quantity,
+          plantOption: item.plantOption,
+          image: item.image,
+        })),
+        subtotal: order.subtotal,
+        discount: order.discount,
+        shipping: order.shipping,
+        tax: order.tax,
+        total: order.total,
+        paymentMethod: order.paymentMethod,
+        paymentStatus: order.paymentStatus,
+        shippingAddress: order.shippingAddress,
+        notes: order.notes,
+        giftMessage: order.giftMessage,
+        createdAt: order.createdAt,
+      })
       console.log('[Checkout] ✓ Confirmation email sent to', order.email)
-    }).catch((err) => {
-      console.error('[Checkout] ⚠ Confirmation email failed (non-blocking):', err?.message || err)
-    })
+    } catch (emailErr) {
+      // Email failure must NEVER block the order response
+      console.error('[Checkout] ⚠ Confirmation email failed (non-blocking):', (emailErr as Error)?.message || emailErr)
+    }
 
     console.log('[Checkout] ── Order complete ──', order._id.toString())
 
