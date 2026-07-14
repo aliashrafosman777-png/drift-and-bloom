@@ -28,15 +28,18 @@ export function successResponse<T = unknown>(
 
 /**
  * Return a standardized error JSON response.
+ * In development, an optional `details` string is included for debugging.
  */
 export function errorResponse(
   message = 'Something went wrong',
-  status = 500
-): NextResponse<ApiErrorResponse> {
-  return NextResponse.json(
-    { success: false, message },
-    { status }
-  )
+  status = 500,
+  details?: string
+): NextResponse<ApiErrorResponse & { details?: string }> {
+  const body: ApiErrorResponse & { details?: string } = { success: false, message }
+  if (details && process.env.NODE_ENV === 'development') {
+    body.details = details
+  }
+  return NextResponse.json(body, { status })
 }
 
 /**

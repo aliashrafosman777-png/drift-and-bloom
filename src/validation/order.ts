@@ -1,12 +1,14 @@
 import { z } from 'zod'
 
 const orderItemSchema = z.object({
-  product: z.string().min(1, 'Product ID is required'),
+  product: z.string().optional().default(''),
   name: z.string().min(1),
   price: z.number().min(0),
   quantity: z.number().int().min(1),
   plantOption: z.string().optional().default(''),
   image: z.string().optional().default(''),
+  isCustomPackage: z.boolean().optional().default(false),
+  packageSelections: z.array(z.record(z.string(), z.unknown())).optional().default([]),
 })
 
 const shippingAddressSchema = z.object({

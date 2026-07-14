@@ -107,51 +107,139 @@ export async function GET(req: NextRequest) {
  * Otherwise, it's a guest order with contact info stored directly.
  */
 export async function POST(req: NextRequest) {
-  try {
-    await connectDB()
+  console.log('[Checkout] ── Incoming order request ──')
 
-    const body = await req.json()
+  try {
+    // ── Step 1: Connect to database ──────────────────────────────────
+    await connectDB()
+    console.log('[Checkout] ✓ MongoDB connected')
+
+    // ── Step 2: Parse and validate request body ──────────────────────
+    let body: unknown
+    try {
+      body = await req.json()
+    } catch {
+      console.error('[Checkout] ✗ Invalid JSON body')
+      return errorResponse('Invalid request body. Please try again.', 400)
+    }
+
     const parsed = createOrderSchema.safeParse(body)
 
     if (!parsed.success) {
+      const messages = parsed.error.issues.map(
+        (e) => `${e.path.join('.')}: ${e.message}`
+      )
+      console.error('[Checkout] ✗ Validation failed:', messages)
       return validationErrorResponse(parsed.error)
     }
 
-    // Resolve product references — handle both ObjectIds and slugs
-    const resolvedItems = await Promise.all(
-      parsed.data.items.map(async (item) => {
-        // If it's already a valid 24-char hex ObjectId, use as-is
-        if (/^[0-9a-fA-F]{24}$/.test(item.product)) {
-          return item
-        }
+    console.log('[Checkout] ✓ Payload validated —', parsed.data.items.length, 'item(s)')
 
-        // Otherwise it's a slug — look up the real product _id
-        const product = await Product.findOne({ slug: item.product }).select('_id').lean()
+    // ── Step 3: Sanitize inputs ──────────────────────────────────────
+    const sanitizedEmail = parsed.data.email.trim().toLowerCase()
+    const sanitizedPhone = parsed.data.phone.trim()
+    const sanitizedName = parsed.data.fullName.trim()
+
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(sanitizedEmail)) {
+      return errorResponse('Invalid email address.', 400)
+    }
+
+    const phoneDigits = sanitizedPhone.replace(/\D/g, '')
+    if (phoneDigits.length < 8 || phoneDigits.length > 15) {
+      return errorResponse('Invalid phone number.', 400)
+    }
+
+    // ── Step 4: Resolve product references ───────────────────────────
+    console.log('[Checkout] Resolving product references...')
+
+    const resolvedItems = []
+    for (const item of parsed.data.items) {
+      // Custom packages don't reference a real product
+      if (item.isCustomPackage || !item.product || item.product.startsWith('custom-package-')) {
+        console.log('[Checkout]   → Custom package:', item.name, '— skipping product lookup')
+        resolvedItems.push({
+          ...item,
+          product: null,
+          isCustomPackage: true,
+        })
+        continue
+      }
+
+      // If it's a valid 24-char hex ObjectId, verify the product exists
+      if (/^[0-9a-fA-F]{24}$/.test(item.product)) {
+        const product = await Product.findById(item.product).select('_id name price isActive').lean()
         if (!product) {
-          throw new Error(`Product not found: ${item.product}`)
+          console.error('[Checkout] ✗ Product not found by ID:', item.product)
+          return errorResponse(
+            `Product "${item.name}" is no longer available. Please remove it from your cart and try again.`,
+            400
+          )
         }
+        if (!(product as any).isActive) {
+          console.error('[Checkout] ✗ Product inactive:', item.product)
+          return errorResponse(
+            `Product "${item.name}" is currently unavailable.`,
+            400
+          )
+        }
+        console.log('[Checkout]   → Resolved by ID:', (product as any).name || item.name)
+        resolvedItems.push({ ...item, product: (product as any)._id.toString() })
+        continue
+      }
 
-        return { ...item, product: product._id.toString() }
-      })
-    )
+      // Otherwise treat as a slug — look up the real product _id
+      const product = await Product.findOne({ slug: item.product }).select('_id name price isActive').lean()
+      if (!product) {
+        console.error('[Checkout] ✗ Product not found by slug:', item.product)
+        return errorResponse(
+          `Product "${item.name}" could not be found. Please remove it from your cart and try again.`,
+          400
+        )
+      }
+      if (!(product as any).isActive) {
+        console.error('[Checkout] ✗ Product inactive (slug):', item.product)
+        return errorResponse(
+          `Product "${item.name}" is currently unavailable.`,
+          400
+        )
+      }
+      console.log('[Checkout]   → Resolved by slug:', (product as any).name || item.name)
+      resolvedItems.push({ ...item, product: (product as any)._id.toString() })
+    }
 
-    // Try to link to logged-in user (optional)
+    console.log('[Checkout] ✓ All', resolvedItems.length, 'item(s) resolved')
+
+    // ── Step 5: Try to link to logged-in user (optional) ─────────────
     const userId = getOptionalUserId(req)
+    if (userId) {
+      console.log('[Checkout] ✓ Linked to user:', userId)
+    } else {
+      console.log('[Checkout] ○ Guest checkout')
+    }
+
+    // ── Step 6: Create the order ─────────────────────────────────────
+    console.log('[Checkout] Creating order in database...')
 
     const order = await Order.create({
       ...parsed.data,
+      fullName: sanitizedName,
+      email: sanitizedEmail,
+      phone: sanitizedPhone,
       items: resolvedItems,
       customer: userId || null,
       paymentStatus: 'pending',
       orderStatus: 'Pending',
     })
 
+    console.log('[Checkout] ✓ Order saved:', order._id.toString())
+
     // Populate customer for response if linked
     if (userId) {
       await order.populate('customer', 'firstName lastName email')
     }
 
-    // Fire-and-forget: send order confirmation email (never block order completion)
+    // ── Step 7: Fire-and-forget email (never blocks order) ───────────
+    console.log('[Checkout] Sending confirmation email...')
     sendOrderConfirmationEmail({
       orderId: order._id.toString(),
       fullName: order.fullName,
@@ -174,14 +262,31 @@ export async function POST(req: NextRequest) {
       notes: order.notes,
       giftMessage: order.giftMessage,
       createdAt: order.createdAt,
-    }).catch((err) =>
-      console.error('Order confirmation email failed (non-blocking):', err)
-    )
+    }).then(() => {
+      console.log('[Checkout] ✓ Confirmation email sent to', order.email)
+    }).catch((err) => {
+      console.error('[Checkout] ⚠ Confirmation email failed (non-blocking):', err?.message || err)
+    })
+
+    console.log('[Checkout] ── Order complete ──', order._id.toString())
 
     return successResponse(order, 'Order placed successfully.', 201)
-  } catch (error) {
-    console.error('Create order error:', error)
-    return errorResponse('Failed to place order.', 500)
+  } catch (error: unknown) {
+    // ── Return the REAL error message, not a generic one ─────────────
+    const message = error instanceof Error ? error.message : 'An unexpected error occurred'
+    const stack = error instanceof Error ? error.stack : undefined
+
+    console.error('[Checkout] ✗ FATAL ERROR:', message)
+    if (stack) console.error('[Checkout] Stack:', stack)
+
+    // In production, don't leak internal details — but still give something useful
+    const clientMessage = process.env.NODE_ENV === 'development'
+      ? message
+      : message.startsWith('Product ')
+        ? message // Product-related errors are safe to show
+        : 'Something went wrong while placing your order. Please try again or contact support.'
+
+    return errorResponse(clientMessage, 500)
   }
 }
 

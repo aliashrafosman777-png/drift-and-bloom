@@ -292,6 +292,7 @@ export default function Cart() {
   const [giftNoteOpen, setGiftNoteOpen] = useState(false)
   const [paymentMethod, setPaymentMethod] = useState('card')
   const [orderPlaced, setOrderPlaced] = useState(false)
+  const [orderId, setOrderId] = useState('')
   const [reviewOpen, setReviewOpen] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
 
@@ -343,6 +344,8 @@ export default function Cart() {
           quantity: item.quantity,
           plantOption: item.plantOption || '',
           image: item.image || '',
+          isCustomPackage: Boolean(item.isCustomPackage),
+          packageSelections: item.packageSelections || [],
         })),
         subtotal,
         shipping,
@@ -358,12 +361,17 @@ export default function Cart() {
         instructionLanguage,
       }
 
-      await apiFetch('/api/orders', {
+      const response = await apiFetch('/api/orders', {
         method: 'POST',
         body: JSON.stringify(orderPayload),
       })
 
+      // Capture the order ID for the success page
+      const createdOrder = response?.data as any
+      const newOrderId = createdOrder?._id || createdOrder?.id || ''
+
       setIsSubmitting(false)
+      setOrderId(newOrderId)
       setOrderPlaced(true)
       setReviewOpen(false)
       clearCart()
@@ -371,7 +379,8 @@ export default function Cart() {
       window.scrollTo({ top: 0, behavior: 'smooth' })
     } catch (err) {
       setIsSubmitting(false)
-      showToast(err.message || 'Failed to place order. Please try again.', 'info')
+      const errorMessage = err instanceof Error ? err.message : 'Something went wrong'
+      showToast(errorMessage || 'Failed to place order. Please try again.', 'info')
     }
   }
 
@@ -398,6 +407,11 @@ export default function Cart() {
           <p className="text-charcoal/60 mt-3 text-sm sm:text-base">
             We'll carefully prepare and deliver your thoughtful gift{form.fullName ? `, ${form.fullName}` : ''}.
           </p>
+          {orderId && (
+            <p className="mt-4 inline-flex items-center gap-2 rounded-xl bg-olive/10 px-4 py-2.5 text-sm font-medium text-olive">
+              <Package size={15} /> Order #{orderId.slice(-8).toUpperCase()}
+            </p>
+          )}
 
           <div className="flex items-center justify-between mt-12 mb-2">
             {PROGRESS_STEPS.map((step, i) => (

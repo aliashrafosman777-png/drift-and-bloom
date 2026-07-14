@@ -1,12 +1,15 @@
 import mongoose, { Schema, Document, Model } from 'mongoose'
 
 export interface IOrderItem {
-  product: mongoose.Types.ObjectId
+  product: mongoose.Types.ObjectId | null
   name: string
   price: number
   quantity: number
   plantOption: string
   image: string
+  isCustomPackage: boolean
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  packageSelections: any[]
 }
 
 export interface IShippingAddress {
@@ -50,12 +53,14 @@ export interface IOrder extends Document {
 
 const OrderItemSchema = new Schema<IOrderItem>(
   {
-    product: { type: Schema.Types.ObjectId, ref: 'Product', required: true },
+    product: { type: Schema.Types.ObjectId, ref: 'Product', default: null },
     name: { type: String, required: true },
     price: { type: Number, required: true },
     quantity: { type: Number, required: true, min: 1 },
     plantOption: { type: String, default: '' },
     image: { type: String, default: '' },
+    isCustomPackage: { type: Boolean, default: false },
+    packageSelections: { type: Schema.Types.Mixed, default: [] },
   },
   { _id: false }
 )
