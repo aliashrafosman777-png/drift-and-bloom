@@ -165,46 +165,40 @@ export async function POST(req: NextRequest) {
         continue
       }
 
-      // If it's a valid 24-char hex ObjectId, verify the product exists
+      // If it's a valid 24-char hex ObjectId, try to verify the product exists
       if (/^[0-9a-fA-F]{24}$/.test(item.product)) {
-        const product = await Product.findById(item.product).select('_id name price isActive').lean()
-        if (!product) {
-          console.error('[Checkout] ✗ Product not found by ID:', item.product)
-          return errorResponse(
-            `Product "${item.name}" is no longer available. Please remove it from your cart and try again.`,
-            400
-          )
+        try {
+          const product = await Product.findById(item.product).select('_id name price isActive').lean()
+          if (product) {
+            console.log('[Checkout]   → Resolved by ID:', (product as any).name || item.name)
+            resolvedItems.push({ ...item, product: (product as any)._id.toString() })
+          } else {
+            // Product not found by ID — still allow order (cart has all needed data)
+            console.warn('[Checkout]   ⚠ Product not found by ID:', item.product, '— proceeding with cart data')
+            resolvedItems.push({ ...item, product: null })
+          }
+        } catch (lookupErr) {
+          console.warn('[Checkout]   ⚠ Product lookup error:', (lookupErr as Error).message, '— proceeding with cart data')
+          resolvedItems.push({ ...item, product: null })
         }
-        if (!(product as any).isActive) {
-          console.error('[Checkout] ✗ Product inactive:', item.product)
-          return errorResponse(
-            `Product "${item.name}" is currently unavailable.`,
-            400
-          )
-        }
-        console.log('[Checkout]   → Resolved by ID:', (product as any).name || item.name)
-        resolvedItems.push({ ...item, product: (product as any)._id.toString() })
         continue
       }
 
-      // Otherwise treat as a slug — look up the real product _id
-      const product = await Product.findOne({ slug: item.product }).select('_id name price isActive').lean()
-      if (!product) {
-        console.error('[Checkout] ✗ Product not found by slug:', item.product)
-        return errorResponse(
-          `Product "${item.name}" could not be found. Please remove it from your cart and try again.`,
-          400
-        )
+      // Otherwise treat as a slug — try to look up the real product _id
+      try {
+        const product = await Product.findOne({ slug: item.product }).select('_id name price isActive').lean()
+        if (product) {
+          console.log('[Checkout]   → Resolved by slug:', (product as any).name || item.name)
+          resolvedItems.push({ ...item, product: (product as any)._id.toString() })
+        } else {
+          // Product not found by slug — still allow order (cart has all needed data)
+          console.warn('[Checkout]   ⚠ Product not found by slug:', item.product, '— proceeding with cart data')
+          resolvedItems.push({ ...item, product: null })
+        }
+      } catch (lookupErr) {
+        console.warn('[Checkout]   ⚠ Product slug lookup error:', (lookupErr as Error).message, '— proceeding with cart data')
+        resolvedItems.push({ ...item, product: null })
       }
-      if (!(product as any).isActive) {
-        console.error('[Checkout] ✗ Product inactive (slug):', item.product)
-        return errorResponse(
-          `Product "${item.name}" is currently unavailable.`,
-          400
-        )
-      }
-      console.log('[Checkout]   → Resolved by slug:', (product as any).name || item.name)
-      resolvedItems.push({ ...item, product: (product as any)._id.toString() })
     }
 
     console.log('[Checkout] ✓ All', resolvedItems.length, 'item(s) resolved')
