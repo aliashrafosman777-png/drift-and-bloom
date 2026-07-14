@@ -218,7 +218,7 @@ export async function sendOTPEmail(
     `
 
     const { data, error } = await resend.emails.send({
-      from: process.env.FROM_EMAIL || 'onboarding@resend.dev',
+      from: process.env.FROM_EMAIL || 'Drift & Bloom <noreply@driftnblooms.com>',
       to: email,
       subject: `🌿 Drift & Bloom - Your Verification Code`,
       html: emailHTML,
@@ -412,7 +412,7 @@ export async function sendReplyEmail(
     `
 
     const { data, error } = await resend.emails.send({
-      from: process.env.FROM_EMAIL || 'onboarding@resend.dev',
+      from: process.env.FROM_EMAIL || 'Drift & Bloom <noreply@driftnblooms.com>',
       to: recipientEmail,
       subject: `Re: ${originalSubject} — Drift & Bloom Support`,
       html: emailHTML,
@@ -733,7 +733,7 @@ export async function sendOrderConfirmationEmail(
 </html>`
 
     const { data, error } = await resend.emails.send({
-      from: process.env.FROM_EMAIL || 'onboarding@resend.dev',
+      from: process.env.FROM_EMAIL || 'Drift & Bloom <noreply@driftnblooms.com>',
       to: order.email,
       subject: `🌿 Order Confirmed — #${shortOrderId} | Drift & Bloom`,
       html: emailHTML,
