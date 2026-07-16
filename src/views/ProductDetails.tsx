@@ -277,12 +277,22 @@ export default function ProductDetails() {
                 </div>
               </div>
 
-              {/* PDF embed */}
-              <div className="flex-1 bg-gray-100">
-                <iframe
-                  src="/Drift_and_Bloom_Care_Cards_English_Bullets_Left.pdf"
-                  title="Drift & Bloom Instruction Cards"
-                  className="w-full h-full border-0"
+              {/* Care Cards Images */}
+              <div className="flex-1 overflow-y-auto bg-beige/40 p-6 flex flex-col gap-6 items-center">
+                <OptimizedImage
+                  src="/assets/care-cards/page-1.png"
+                  alt="Drift & Bloom Plant Care Card"
+                  className="w-full max-w-2xl rounded-2xl shadow-card border border-gold/10 object-contain"
+                />
+                <OptimizedImage
+                  src="/assets/care-cards/page-2.png"
+                  alt="Drift & Bloom Candle Care Card"
+                  className="w-full max-w-2xl rounded-2xl shadow-card border border-gold/10 object-contain"
+                />
+                <OptimizedImage
+                  src="/assets/care-cards/page-3.png"
+                  alt="Drift & Bloom Story Card"
+                  className="w-full max-w-2xl rounded-2xl shadow-card border border-gold/10 object-contain"
                 />
               </div>
             </motion.div>

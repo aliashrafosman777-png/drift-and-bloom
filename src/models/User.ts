@@ -9,6 +9,13 @@ export interface IAddress {
   isDefault: boolean
 }
 
+export interface IGameProgress {
+  currentIdx: number
+  answers: Record<string, number>
+  done: boolean
+  result: any
+}
+
 export interface IUser extends Document {
   firstName: string
   lastName: string
@@ -24,6 +31,7 @@ export interface IUser extends Document {
     plantOption?: string
   }>
   addresses: IAddress[]
+  gameProgress?: IGameProgress | null
   createdAt: Date
   updatedAt: Date
 }
@@ -75,6 +83,15 @@ const UserSchema = new Schema<IUser>(
       },
     ],
     addresses: { type: [AddressSchema], default: [] },
+    gameProgress: {
+      type: {
+        currentIdx: { type: Number, default: 0 },
+        answers: { type: Schema.Types.Mixed, default: {} },
+        done: { type: Boolean, default: false },
+        result: { type: Schema.Types.Mixed, default: null },
+      },
+      default: null,
+    },
   },
   {
     timestamps: true,

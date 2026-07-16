@@ -1,23 +1,101 @@
 // @ts-nocheck
 "use client"
 
-import React, { useCallback, useMemo, useState } from 'react'
+import React, { useCallback, useMemo, useState, useEffect } from 'react'
 import { ChevronLeft, ChevronRight } from 'lucide-react'
 import { QUESTIONS } from './quizData'
 import { computeResult } from './scoring'
 import ProgressBar from './ProgressBar'
 import QuestionCard from './QuestionCard'
 import ResultCard from './ResultCard'
+import { useAuth } from '@/context/AuthContext'
+import { apiFetch } from '@/lib/api'
+import LoadingFallback from '../../components/common/LoadingFallback'
 
 const TOTAL = QUESTIONS.length
 
 export default function Quiz() {
+  const { isAuthenticated } = useAuth()
+
   const [currentIdx, setCurrentIdx] = useState(0)  // 0-based index into QUESTIONS
   const [answers, setAnswers]       = useState({})  // { questionId: optionIndex }
   const [direction, setDirection]   = useState('forward')
   const [animKey, setAnimKey]       = useState(0)
   const [done, setDone]             = useState(false)
   const [result, setResult]         = useState(null)
+  const [isLoaded, setIsLoaded]     = useState(false)
+
+  // Load progress from localStorage and database on mount
+  useEffect(() => {
+    let active = true
+
+    async function loadProgress() {
+      // 1. Check localStorage first for immediate local state
+      let progress = null
+      const localData = localStorage.getItem('db_game_progress')
+      if (localData) {
+        try {
+          progress = JSON.parse(localData)
+        } catch (e) {
+          console.error('Error parsing local progress:', e)
+        }
+      }
+
+      // 2. If authenticated, fetch from DB
+      if (isAuthenticated) {
+        try {
+          const res = await apiFetch('/api/game/progress')
+          if (res.success && res.data && active) {
+            progress = res.data
+            // Update localStorage to match DB
+            localStorage.setItem('db_game_progress', JSON.stringify(progress))
+          }
+        } catch (err) {
+          console.error('Failed to load progress from DB:', err)
+        }
+      }
+
+      // 3. Hydrate state
+      if (progress && active) {
+        if (progress.currentIdx !== undefined) setCurrentIdx(progress.currentIdx)
+        if (progress.answers) setAnswers(progress.answers)
+        if (progress.done !== undefined) setDone(progress.done)
+        if (progress.result !== undefined) setResult(progress.result)
+      }
+      if (active) {
+        setIsLoaded(true)
+      }
+    }
+
+    loadProgress()
+
+    return () => {
+      active = false
+    }
+  }, [isAuthenticated])
+
+  // Save progress on changes to answers or state
+  useEffect(() => {
+    if (!isLoaded) return
+
+    const progress = { currentIdx, answers, done, result }
+    localStorage.setItem('db_game_progress', JSON.stringify(progress))
+
+    if (isAuthenticated) {
+      const timer = setTimeout(async () => {
+        try {
+          await apiFetch('/api/game/progress', {
+            method: 'POST',
+            body: JSON.stringify(progress),
+          })
+        } catch (err) {
+          console.error('Failed to save progress to DB:', err)
+        }
+      }, 1000)
+
+      return () => clearTimeout(timer)
+    }
+  }, [currentIdx, answers, done, result, isLoaded, isAuthenticated])
 
   const currentQ  = QUESTIONS[currentIdx]
   const isFirst   = currentIdx === 0
@@ -67,14 +145,30 @@ export default function Quiz() {
   )
 
   // Reset quiz
-  const handleRetake = useCallback(() => {
+  const handleRetake = useCallback(async () => {
     setCurrentIdx(0)
     setAnswers({})
     setDone(false)
     setResult(null)
     setDirection('forward')
     setAnimKey((k) => k + 1)
-  }, [])
+
+    // Clear progress from localStorage and database
+    localStorage.removeItem('db_game_progress')
+    if (isAuthenticated) {
+      try {
+        await apiFetch('/api/game/progress', {
+          method: 'DELETE',
+        })
+      } catch (err) {
+        console.error('Failed to reset progress in DB:', err)
+      }
+    }
+  }, [isAuthenticated])
+
+  if (!isLoaded) {
+    return <LoadingFallback label="Loading your quiz progress..." />
+  }
 
   if (done && result) {
     return (
@@ -163,6 +257,18 @@ export default function Quiz() {
         <p className="text-xs text-charcoal/35 text-center mt-3 animate-fade-in">
           Please choose an answer to continue
         </p>
+      )}
+
+      {!isFirst && (
+        <div className="flex justify-center mt-4">
+          <button
+            type="button"
+            onClick={handleRetake}
+            className="flex items-center gap-1 text-[11px] text-charcoal/40 hover:text-red-500 transition duration-200 underline underline-offset-2"
+          >
+            Reset Progress & Start Over
+          </button>
+        </div>
       )}
     </div>
   )

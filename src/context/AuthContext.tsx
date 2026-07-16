@@ -109,6 +109,37 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setStoredToken(data.token)
         setToken(data.token)
         setUser(buildAuthUser(data.user))
+
+        // Sync game progress
+        try {
+          const localProgressStr = window.localStorage.getItem('db_game_progress')
+          if (localProgressStr) {
+            const localProgress = JSON.parse(localProgressStr)
+            const hasAnswers = localProgress.answers && Object.keys(localProgress.answers).length > 0
+            if (hasAnswers) {
+              // Push local to DB
+              await apiFetch('/api/game/progress', {
+                method: 'POST',
+                body: JSON.stringify(localProgress)
+              })
+            } else {
+              // Pull DB to local
+              const dbRes = await apiFetch('/api/game/progress')
+              if (dbRes.success && dbRes.data) {
+                window.localStorage.setItem('db_game_progress', JSON.stringify(dbRes.data))
+              }
+            }
+          } else {
+            // Pull DB to local
+            const dbRes = await apiFetch('/api/game/progress')
+            if (dbRes.success && dbRes.data) {
+              window.localStorage.setItem('db_game_progress', JSON.stringify(dbRes.data))
+            }
+          }
+        } catch (syncErr) {
+          console.error('Error syncing game progress on login:', syncErr)
+        }
+
         return { success: true }
       }
 

@@ -1,12 +1,44 @@
-// @ts-nocheck
-"use client"
-
-import React from 'react'
+import React, { useMemo } from 'react'
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import { RotateCcw, ShoppingBag, Leaf, Flame, Gift, Sparkles, Heart } from 'lucide-react'
+import { useCart } from '../../context/CartContext'
+import { useProducts } from '../../context/ProductContext'
+import { useToast } from '../../components/common/Toast'
+import OptimizedImage from '../../components/common/OptimizedImage'
 
 export default function ResultCard({ result, onRetake }) {
   const { main, secondary, isBlended, plant, isPetSafe } = result
+
+  const { addToCart } = useCart()
+  const { getProductById } = useProducts()
+  const { showToast } = useToast()
+  const router = useRouter()
+
+  const recommendedProducts = useMemo(() => {
+    const list = []
+    if (main?.id) {
+      const p = getProductById(main.id)
+      if (p) list.push(p)
+    }
+    if (isBlended && secondary?.id) {
+      const p = getProductById(secondary.id)
+      if (p) list.push(p)
+    }
+    return list
+  }, [main, secondary, isBlended, getProductById])
+
+  const handleAddToCart = (product) => {
+    const defaultPlant = product.plantOptions?.[0]?.name || null
+    addToCart(product, 1, defaultPlant)
+    showToast(`Added The ${product.name} Collection to your cart!`, 'success')
+  }
+
+  const handleBuyNow = (product) => {
+    const defaultPlant = product.plantOptions?.[0]?.name || null
+    addToCart(product, 1, defaultPlant)
+    router.push('/cart')
+  }
 
   if (!main) return null
 
@@ -171,9 +203,111 @@ export default function ResultCard({ result, onRetake }) {
           className="flex items-center gap-1.5 text-xs text-charcoal/45 hover:text-olive
             transition duration-200 underline underline-offset-2 mt-1 sm:mt-0"
         >
-          <RotateCcw size={12} /> Retake Quiz
+          <RotateCcw size={12} /> Play Again (Reset Progress)
         </button>
       </div>
+
+      {/* ── Recommended Products Section ─────────────────────────────────── */}
+      {recommendedProducts.length > 0 && (
+        <div className="mt-12 pt-10 border-t border-charcoal/10">
+          <div className="text-center mb-8">
+            <span className="text-gold-dark text-xs uppercase tracking-label font-semibold">
+              Tailored for Your Soul
+            </span>
+            <h2 className="font-serif text-3xl text-charcoal mt-1">
+              Your Recommended {recommendedProducts.length > 1 ? 'Packages' : 'Package'}
+            </h2>
+            <p className="text-sm text-charcoal/60 mt-2 max-w-md mx-auto">
+              {recommendedProducts.length > 1 
+                ? "Since your soul is a blend of two energies, we recommend combining these collections for complete harmony." 
+                : "This collection was handpicked to nourish your current emotional needs and restore balance."
+              }
+            </p>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-8 justify-center">
+            {recommendedProducts.map((product) => (
+              <div 
+                key={product.id}
+                className="bg-white/90 backdrop-blur-sm rounded-3xl border border-white/60 shadow-card hover:shadow-lift transition-all duration-300 flex flex-col overflow-hidden group"
+              >
+                {/* Product Image */}
+                <div className="relative aspect-[4/3] w-full overflow-hidden bg-cream">
+                  <OptimizedImage
+                    src={product.image}
+                    alt={product.name}
+                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                  />
+                  {product.bestSeller && (
+                    <span className="absolute top-4 left-4 bg-gold text-charcoal-dark font-medium text-[10px] tracking-label uppercase px-2.5 py-1 rounded-full shadow-sm">
+                      Best Seller
+                    </span>
+                  )}
+                </div>
+
+                {/* Product Info */}
+                <div className="p-6 sm:p-8 flex-1 flex flex-col">
+                  <div className="flex justify-between items-start gap-4 mb-2">
+                    <div>
+                      <h3 className="font-serif text-2xl text-charcoal group-hover:text-olive transition-colors duration-300">
+                        The {product.name} Collection
+                      </h3>
+                      {product.tagline && (
+                        <p className="text-xs italic text-charcoal/50 font-serif mt-0.5">
+                          "{product.tagline}"
+                        </p>
+                      )}
+                    </div>
+                    <span className="font-serif text-2xl text-brown shrink-0">
+                      LE {product.price.toLocaleString()}
+                    </span>
+                  </div>
+
+                  <p className="text-sm text-charcoal/60 leading-relaxed mb-6 flex-1">
+                    {product.shortDescription || product.description}
+                  </p>
+
+                  {/* Scent & Includes badges */}
+                  {product.scent && (
+                    <div className="mb-6 flex flex-wrap gap-2">
+                      <span className="inline-block text-[10px] bg-beige text-charcoal/60 px-3 py-1 rounded-full border border-charcoal/5 font-medium">
+                        ✨ Scent: {product.scent}
+                      </span>
+                      {product.plantOptions?.[0] && (
+                        <span className="inline-block text-[10px] bg-sage-50 text-sage-700 px-3 py-1 rounded-full border border-sage-100 font-medium">
+                          🌿 Default Plant: {product.plantOptions[0].name}
+                        </span>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Buttons */}
+                  <div className="flex gap-3">
+                    <button
+                      type="button"
+                      onClick={() => handleAddToCart(product)}
+                      className="flex-1 bg-transparent border border-olive text-olive hover:bg-olive/5
+                        text-xs font-semibold uppercase tracking-label py-3.5 rounded-full
+                        transition duration-300 active:scale-[0.98]"
+                    >
+                      Add to Cart
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleBuyNow(product)}
+                      className="flex-1 bg-olive hover:bg-olive-dark text-cream
+                        text-xs font-semibold uppercase tracking-label py-3.5 rounded-full
+                        transition duration-300 shadow-sm hover:shadow-lift active:scale-[0.98]"
+                    >
+                      Buy Now
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   )
 }
