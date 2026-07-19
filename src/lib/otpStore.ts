@@ -1,28 +1,11 @@
 import crypto from 'crypto'
+import OTP from '@/models/OTP'
+import connectDB from '@/lib/mongodb'
 
-/**
- * OTP Store — In-memory storage for OTP codes with rate limiting.
- * In production, replace with Redis for multi-instance support.
- * Matches the qaser/ALKASR pattern exactly.
- */
-
-// Rate limiting configuration
 const RATE_LIMIT_WINDOW = 10 * 60 * 1000 // 10 minutes
-const MAX_ATTEMPTS_PER_WINDOW = 3
+const MAX_ATTEMPTS_PER_WINDOW = 5
 const OTP_EXPIRY_TIME = 10 * 60 * 1000 // 10 minutes
 const MAX_VERIFY_ATTEMPTS = 5
-
-// In-memory stores
-const otpAttempts = new Map<string, { count: number; firstAttempt: number }>()
-const otpCodes = new Map<
-  string,
-  {
-    hashedOTP: string
-    expiresAt: number
-    attempts: number
-    isNewUser: boolean
-  }
->()
 
 /** Generate a 6-digit OTP code. */
 export function generateOTP(): string {
@@ -34,63 +17,86 @@ export function hashOTP(otp: string): string {
   return crypto.createHash('sha256').update(otp).digest('hex')
 }
 
-/** Check rate limit for an email. Returns allowed status + remaining attempts. */
-export function checkRateLimit(email: string): {
+/** Check rate limit for an email using MongoDB. */
+export async function checkRateLimit(email: string): Promise<{
   allowed: boolean
   remaining: number
   timeUntilReset?: number
-} {
-  const now = Date.now()
-  const attempts = otpAttempts.get(email) || { count: 0, firstAttempt: now }
+}> {
+  await connectDB()
+  const normalizedEmail = email.toLowerCase().trim()
+  const now = new Date()
 
-  // Reset if window has passed
-  if (now - attempts.firstAttempt > RATE_LIMIT_WINDOW) {
-    otpAttempts.set(email, { count: 1, firstAttempt: now })
-    return { allowed: true, remaining: MAX_ATTEMPTS_PER_WINDOW - 1 }
-  }
+  // Find recent OTP attempts within the window
+  const tenMinutesAgo = new Date(Date.now() - RATE_LIMIT_WINDOW)
+  const recentCount = await OTP.countDocuments({
+    email: normalizedEmail,
+    createdAt: { $gte: tenMinutesAgo },
+  })
 
-  // Check if limit exceeded
-  if (attempts.count >= MAX_ATTEMPTS_PER_WINDOW) {
-    const timeUntilReset = RATE_LIMIT_WINDOW - (now - attempts.firstAttempt)
+  if (recentCount >= MAX_ATTEMPTS_PER_WINDOW) {
+    const oldestDoc = await OTP.findOne({
+      email: normalizedEmail,
+      createdAt: { $gte: tenMinutesAgo },
+    }).sort({ createdAt: 1 })
+
+    const resetMs = oldestDoc
+      ? RATE_LIMIT_WINDOW - (now.getTime() - oldestDoc.createdAt.getTime())
+      : RATE_LIMIT_WINDOW
+
     return {
       allowed: false,
       remaining: 0,
-      timeUntilReset: Math.ceil(timeUntilReset / 1000),
+      timeUntilReset: Math.max(1, Math.ceil(resetMs / 1000)),
     }
   }
 
-  // Increment attempts
-  otpAttempts.set(email, { ...attempts, count: attempts.count + 1 })
-  return { allowed: true, remaining: MAX_ATTEMPTS_PER_WINDOW - attempts.count - 1 }
+  return {
+    allowed: true,
+    remaining: MAX_ATTEMPTS_PER_WINDOW - recentCount - 1,
+  }
 }
 
-/** Store a hashed OTP for an email with expiry. */
-export function storeOTP(email: string, otp: string, isNewUser: boolean): void {
-  otpCodes.set(email, {
+/** Store a hashed OTP in MongoDB for multi-instance Vercel support. */
+export async function storeOTP(
+  email: string,
+  otp: string,
+  isNewUser: boolean
+): Promise<void> {
+  await connectDB()
+  const normalizedEmail = email.toLowerCase().trim()
+  const expiresAt = new Date(Date.now() + OTP_EXPIRY_TIME)
+
+  // Remove existing active OTP for this email
+  await OTP.deleteMany({ email: normalizedEmail })
+
+  // Insert new OTP
+  await OTP.create({
+    email: normalizedEmail,
     hashedOTP: hashOTP(otp),
-    expiresAt: Date.now() + OTP_EXPIRY_TIME,
     attempts: 0,
     isNewUser,
+    expiresAt,
   })
 }
 
 /**
- * Verify an OTP code for an email.
- * If consume=false, the OTP is NOT deleted — useful for the "new user needs name" flow
- * where the frontend will call verify-code again with the name.
+ * Verify an OTP code for an email using MongoDB.
  */
-export function verifyOTP(
+export async function verifyOTP(
   email: string,
   code: string,
   consume: boolean = true
-): {
+): Promise<{
   valid: boolean
   error?: string
   errorCode?: string
   isNewUser?: boolean
   remainingAttempts?: number
-} {
-  const stored = otpCodes.get(email)
+}> {
+  await connectDB()
+  const normalizedEmail = email.toLowerCase().trim()
+  const stored = await OTP.findOne({ email: normalizedEmail }).sort({ createdAt: -1 })
 
   if (!stored) {
     return {
@@ -101,8 +107,8 @@ export function verifyOTP(
   }
 
   // Check expiry
-  if (Date.now() > stored.expiresAt) {
-    otpCodes.delete(email)
+  if (new Date() > stored.expiresAt) {
+    await OTP.deleteOne({ _id: stored._id })
     return {
       valid: false,
       error: 'Verification code has expired. Please request a new code.',
@@ -112,7 +118,7 @@ export function verifyOTP(
 
   // Check max attempts
   if (stored.attempts >= MAX_VERIFY_ATTEMPTS) {
-    otpCodes.delete(email)
+    await OTP.deleteOne({ _id: stored._id })
     return {
       valid: false,
       error: 'Maximum verification attempts exceeded. Please request a new code.',
@@ -124,7 +130,7 @@ export function verifyOTP(
   const hashedInput = hashOTP(code)
   if (hashedInput !== stored.hashedOTP) {
     stored.attempts += 1
-    otpCodes.set(email, stored)
+    await stored.save()
     const remaining = MAX_VERIFY_ATTEMPTS - stored.attempts
 
     return {
@@ -136,10 +142,10 @@ export function verifyOTP(
   }
 
   // Valid — optionally consume
-  const { isNewUser } = stored
+  const isNewUser = stored.isNewUser
   if (consume) {
-    otpCodes.delete(email)
+    await OTP.deleteOne({ _id: stored._id })
   }
+
   return { valid: true, isNewUser }
 }
-

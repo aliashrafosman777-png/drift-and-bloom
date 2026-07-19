@@ -26,7 +26,7 @@ export async function POST(req: NextRequest) {
     const { email } = parsed.data
 
     // Rate limit
-    const rateLimit = checkRateLimit(email)
+    const rateLimit = await checkRateLimit(email)
     if (!rateLimit.allowed) {
       return errorResponse(
         `Too many attempts. Please try again in ${Math.ceil((rateLimit.timeUntilReset || 600) / 60)} minutes.`,
@@ -42,7 +42,7 @@ export async function POST(req: NextRequest) {
 
     // Generate and store OTP
     const otp = generateOTP()
-    storeOTP(email, otp, isNewUser)
+    await storeOTP(email, otp, isNewUser)
 
     // Send via Resend
     const emailResult = await sendOTPEmail(email, otp, isNewUser)

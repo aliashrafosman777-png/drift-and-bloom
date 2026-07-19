@@ -39,7 +39,7 @@ export async function POST(req: NextRequest) {
     const needsName = isNewUserInDb && (!name || name.trim().length === 0)
 
     // Verify OTP — don't consume if we need to ask for name
-    const result = verifyOTP(email, code, !needsName)
+    const result = await verifyOTP(email, code, !needsName)
 
     if (!result.valid) {
       const status =
