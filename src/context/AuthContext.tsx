@@ -33,6 +33,7 @@ type AuthContextValue = {
   token: string | null
   isAuthenticated: boolean
   isAdmin: boolean
+  loading: boolean
   sendCode: (email: string) => Promise<SendCodeResult>
   verifyCode: (email: string, code: string, name?: string) => Promise<VerifyCodeResult>
   logout: () => void
@@ -55,6 +56,7 @@ function buildAuthUser(apiUser: any): AuthUser {
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null)
   const [token, setToken] = useState<string | null>(null)
+  const [loading, setLoading] = useState<boolean>(true)
 
   // Hydrate from localStorage on mount
   useEffect(() => {
@@ -69,6 +71,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           removeStoredToken()
           setToken(null)
         })
+        .finally(() => {
+          setLoading(false)
+        })
+    } else {
+      setLoading(false)
     }
   }, [])
 
@@ -161,11 +168,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       token,
       isAuthenticated: !!user,
       isAdmin: !!user?.isAdmin,
+      loading,
       sendCode,
       verifyCode,
       logout,
     }),
-    [user, token]
+    [user, token, loading]
   )
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>

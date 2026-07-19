@@ -12,7 +12,7 @@ import { useAuth } from '../../context/AuthContext'
 type Step = 'email' | 'code' | 'name'
 
 export default function AdminLogin() {
-  const { sendCode, verifyCode, isAuthenticated, isAdmin } = useAuth()
+  const { sendCode, verifyCode, isAuthenticated, isAdmin, loading: authLoading } = useAuth()
   const router = useRouter()
   const [step, setStep] = useState<Step>('email')
   const [email, setEmail] = useState('')
@@ -24,15 +24,15 @@ export default function AdminLogin() {
 
   // Already admin → redirect
   useEffect(() => {
-    if (isAuthenticated && isAdmin) router.push('/admin')
-  }, [isAuthenticated, isAdmin])
+    if (!authLoading && isAuthenticated && isAdmin) router.push('/admin')
+  }, [isAuthenticated, isAdmin, authLoading])
 
   // Authenticated but NOT admin → show error
   useEffect(() => {
-    if (isAuthenticated && !isAdmin) {
+    if (!authLoading && isAuthenticated && !isAdmin) {
       setError('This email does not have admin access.')
     }
-  }, [isAuthenticated, isAdmin])
+  }, [isAuthenticated, isAdmin, authLoading])
 
   // Countdown timer
   useEffect(() => {

@@ -28,21 +28,23 @@ const navItems = [
 ]
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
-  const { isAdmin, logout, user } = useAuth()
+  const { isAdmin, loading, logout, user } = useAuth()
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const pathname = usePathname()
   const router = useRouter()
 
   useEffect(() => {
-    if (!isAdmin) router.replace('/login?from=/admin')
-  }, [isAdmin, router])
+    if (!loading && !isAdmin) {
+      router.replace('/login?from=/admin')
+    }
+  }, [isAdmin, loading, router])
 
   // Close sidebar on route change
   useEffect(() => {
     setSidebarOpen(false)
   }, [pathname])
 
-  if (!isAdmin) return <LoadingFallback />
+  if (loading || !isAdmin) return <LoadingFallback />
 
   const isActive = (href: string, end?: boolean) =>
     end ? pathname === href : pathname === href || pathname.startsWith(`${href}/`)

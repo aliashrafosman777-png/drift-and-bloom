@@ -14,7 +14,7 @@ const loginImage = "/assets/login.jpeg";
 type Step = "email" | "code" | "name";
 
 export default function Login() {
-  const { sendCode, verifyCode, isAuthenticated, isAdmin } = useAuth();
+  const { sendCode, verifyCode, isAuthenticated, isAdmin, loading: authLoading } = useAuth();
   const { showToast } = useToast();
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -31,10 +31,10 @@ export default function Login() {
 
   // Already authenticated → redirect
   useEffect(() => {
-    if (isAuthenticated) {
+    if (!authLoading && isAuthenticated) {
       router.replace(isAdmin ? '/admin' : redirectTo);
     }
-  }, [isAuthenticated, isAdmin]);
+  }, [isAuthenticated, isAdmin, authLoading, redirectTo]);
 
   // Countdown timer for resend
   useEffect(() => {

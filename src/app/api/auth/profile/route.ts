@@ -17,6 +17,13 @@ export async function GET(req: NextRequest) {
       return errorResponse('User not found.', 404)
     }
 
+    // Auto-upgrade admin role for whitelisted emails
+    const { isAdminEmail } = await import('@/middleware/auth')
+    if (isAdminEmail(user.email) && user.role !== 'admin') {
+      user.role = 'admin'
+      await user.save()
+    }
+
     return successResponse({
       id: user._id,
       firstName: user.firstName,

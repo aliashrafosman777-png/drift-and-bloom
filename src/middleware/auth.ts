@@ -16,6 +16,7 @@ const ADMIN_EMAILS = [
   'fathy.abdelrahman@mail.ru',
   'joudyessam233@icloud.com',
   'driftandbloom28@gmail.com',
+  'cretoify@gmail.com',
 ]
 
 /**
