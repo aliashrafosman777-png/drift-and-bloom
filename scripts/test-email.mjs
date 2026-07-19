@@ -1,8 +1,8 @@
 // Test Resend email delivery
 import { Resend } from 'resend'
 
-const RESEND_API_KEY = 're_3mSMnurx_LVAw54M3vpK2LTo6iSavaDHC'
-const FROM_EMAIL = 'Drift & Bloom <noreply@driftnblooms.com>'
+const RESEND_API_KEY = process.env.RESEND_API_KEY
+const FROM_EMAIL = process.env.FROM_EMAIL || 'Drift & Bloom <noreply@driftnblooms.com>'
 const TEST_TO = 'aliashrafosman777@gmail.com'
 
 const resend = new Resend(RESEND_API_KEY)

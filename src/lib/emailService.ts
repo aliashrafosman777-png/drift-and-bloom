@@ -1,13 +1,29 @@
 import { Resend } from 'resend'
 
-const resend = new Resend(process.env.RESEND_API_KEY)
+let resend: Resend | null = null
 
-function isResendConfigured(): boolean {
+function getResendClient(): Resend | null {
   if (!process.env.RESEND_API_KEY) {
     console.warn('RESEND_API_KEY not found. Email features will be disabled.')
-    return false
+    return null
   }
-  return true
+  if (!resend) {
+    resend = new Resend(process.env.RESEND_API_KEY)
+  }
+  return resend
+}
+
+/**
+ * Get the verified "from" email address.
+ * Falls back to Resend's free testing sender if FROM_EMAIL is not set
+ * or if the domain is not verified in Resend.
+ */
+function getFromEmail(): string {
+  return process.env.FROM_EMAIL || 'Drift & Bloom <onboarding@resend.dev>'
+}
+
+function isResendConfigured(): boolean {
+  return !!process.env.RESEND_API_KEY
 }
 
 /**
@@ -217,8 +233,13 @@ export async function sendOTPEmail(
       </html>
     `
 
-    const { data, error } = await resend.emails.send({
-      from: process.env.FROM_EMAIL || 'Drift & Bloom <noreply@driftnblooms.com>',
+    const client = getResendClient()
+    if (!client) {
+      return { success: false, error: 'Email service not configured' }
+    }
+
+    const { data, error } = await client.emails.send({
+      from: getFromEmail(),
       to: email,
       subject: `🌿 Drift & Bloom - Your Verification Code`,
       html: emailHTML,
@@ -411,8 +432,13 @@ export async function sendReplyEmail(
       </html>
     `
 
-    const { data, error } = await resend.emails.send({
-      from: process.env.FROM_EMAIL || 'Drift & Bloom <noreply@driftnblooms.com>',
+    const client = getResendClient()
+    if (!client) {
+      return { success: false, error: 'Email service not configured' }
+    }
+
+    const { data, error } = await client.emails.send({
+      from: getFromEmail(),
       to: recipientEmail,
       subject: `Re: ${originalSubject} — Drift & Bloom Support`,
       html: emailHTML,
@@ -732,8 +758,13 @@ export async function sendOrderConfirmationEmail(
 </body>
 </html>`
 
-    const { data, error } = await resend.emails.send({
-      from: process.env.FROM_EMAIL || 'Drift & Bloom <noreply@driftnblooms.com>',
+    const client = getResendClient()
+    if (!client) {
+      return { success: false, error: 'Email service not configured' }
+    }
+
+    const { data, error } = await client.emails.send({
+      from: getFromEmail(),
       to: order.email,
       subject: `🌿 Order Confirmed — #${shortOrderId} | Drift & Bloom`,
       html: emailHTML,

@@ -61,8 +61,12 @@ export async function POST(req: NextRequest) {
       },
       'Verification code sent to your email.'
     )
-  } catch (error) {
-    console.error('Send code error:', error)
+  } catch (error: any) {
+    console.error('Send code error:', {
+      message: error?.message,
+      name: error?.name,
+      stack: error?.stack?.slice(0, 500),
+    })
     return errorResponse('Failed to send verification code.', 500)
   }
 }
