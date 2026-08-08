@@ -24,15 +24,27 @@ const normalizeQuantity = (quantity) => Math.max(1, Number.parseInt(quantity, 10
 const normalizeCategoryId = (categoryId) => (categoryId === 'fish-tanks' ? 'fish' : categoryId)
 
 export function PackageProvider({ children }) {
-  const [packageItems, setPackageItems] = useState(readStoredPackage)
+  const [packageItems, setPackageItems] = useState({})
+  const [isHydrated, setIsHydrated] = useState(false)
 
+  // Hydrate packageItems from localStorage on mount (client-side only)
   useEffect(() => {
+    const stored = readStoredPackage()
+    if (stored && Object.keys(stored).length > 0) {
+      setPackageItems(stored)
+    }
+    setIsHydrated(true)
+  }, [])
+
+  // Persist packageItems to localStorage AFTER initial hydration
+  useEffect(() => {
+    if (!isHydrated) return
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(packageItems))
     } catch {
       /* Ignore unavailable storage, for example private browsing restrictions. */
     }
-  }, [packageItems])
+  }, [packageItems, isHydrated])
 
   const addItem = useCallback((product, quantity = 1) => {
     if (!product?.id || !product?.category) return

@@ -2,39 +2,19 @@
 "use client"
 
 import React, { useEffect, useRef, useState } from 'react'
-import { X, CheckCircle2, AlertCircle, Package } from 'lucide-react'
+import { X, CheckCircle2, AlertCircle, Fish } from 'lucide-react'
 import {
   FormInput, FormTextarea, FormSelect,
-  FormToggle, FormTagInput, FormSection,
+  FormTagInput, FormSection,
 } from './FormFields'
 import ImageUploader from './ImageUploader'
-import ProductPreview from './ProductPreview'
-import { useProducts } from '../../context/ProductContext'
+import { useFishProducts } from '../../context/FishProductContext'
+import OptimizedImage from '../common/OptimizedImage'
 
 // ── Select option lists ──────────────────────────────────────────────────────
-const CATEGORY_OPTIONS = [
-  { value: 'calm',          label: 'Calm' },
-  { value: 'best-seller',   label: 'Best Seller' },
-  { value: 'gifting',       label: 'Gifting' },
-  { value: 'love',          label: 'Love' },
-  { value: 'self-care',     label: 'Self-Care' },
-  { value: 'new-beginnings',label: 'New Beginnings' },
-  { value: 'fish',          label: 'Fish & Aquariums' },
-  { value: 'aquariums',     label: 'Aquariums' },
-  { value: 'aquatic-life',  label: 'Aquatic Life' },
-]
-
-const COLLECTION_OPTIONS = [
-  { value: 'return',    label: 'Return' },
-  { value: 'growth',    label: 'Growth' },
-  { value: 'stillness', label: 'Stillness' },
-  { value: 'home',      label: 'Home' },
-  { value: 'grounded',  label: 'Grounded' },
-  { value: 'joy',       label: 'Joy' },
-  { value: 'love',      label: 'Love' },
-  { value: 'dream',     label: 'Dream' },
-  { value: 'renewal',   label: 'Renewal' },
-  { value: 'balance',   label: 'Balance' },
+const FISH_SUB_CATEGORY_OPTIONS = [
+  { value: 'aquatic-life', label: 'Aquatic Life — Betta fish, shrimp, crab, etc.' },
+  { value: 'aquariums',    label: 'Aquariums — Fish tanks and setups' },
 ]
 
 const STATUS_OPTIONS = [
@@ -43,82 +23,65 @@ const STATUS_OPTIONS = [
   { value: 'out_of_stock', label: 'Out of Stock' },
 ]
 
-const SIZE_OPTIONS = [
-  { value: 'compact',  label: 'Compact — fits on a desk or shelf' },
-  { value: 'medium',   label: 'Medium — standard package size' },
-  { value: 'large',    label: 'Large — statement piece' },
-]
-
-const DIFFICULTY_OPTIONS = [
-  { value: 'beginner',     label: 'Beginner — easy to care for' },
-  { value: 'intermediate', label: 'Intermediate — some attention needed' },
-  { value: 'advanced',     label: 'Advanced — requires expertise' },
-]
-
-const LIGHT_OPTIONS = [
-  { value: 'low',    label: 'Low Light — shade tolerant' },
-  { value: 'medium', label: 'Medium Light — indirect sun' },
-  { value: 'bright', label: 'Bright Light — direct or strong sun' },
-]
-
-const WATERING_OPTIONS = [
-  { value: 'daily',     label: 'Daily' },
-  { value: 'weekly',    label: 'Weekly' },
-  { value: 'biweekly',  label: 'Every 2 weeks' },
-  { value: 'monthly',   label: 'Monthly' },
-]
-
 // ── Initial form state ────────────────────────────────────────────────────────
 const EMPTY_FORM = {
-  name:          '',
-  tagline:       '',
-  description:   '',
-  categories:    ['calm'],
-  collection:    'stillness',
-  price:         '',
-  discountPrice: '',
-  stock:         '',
-  sku:           '',
-  status:        'active',
-  size:          'medium',
-  difficulty:    'beginner',
-  light:         'medium',
-  watering:      'weekly',
-  petFriendly:   false,
-  airPurifying:  false,
-  tags:          [],
-  scent:         '',
+  name:             '',
+  shortDescription: '',
+  description:      '',
+  story:            '',
+  fishSubCategory:  'aquatic-life',
+  price:            '',
+  discountPrice:    '',
+  tags:             [],
+  status:           'active',
 }
 
 // ── Validation ────────────────────────────────────────────────────────────────
 function validate(form, images) {
   const errors = {}
-  if (!form.name.trim())        errors.name  = 'Package name is required.'
-  if (!form.tagline.trim())     errors.tagline = 'Short description is required.'
+  if (!form.name.trim())       errors.name = 'Product name is required.'
+  if (!form.shortDescription.trim()) errors.shortDescription = 'Short description is required.'
   if (!form.price || isNaN(Number(form.price)) || Number(form.price) <= 0)
     errors.price = 'A valid price is required.'
-  if (images.length === 0)      errors.images = 'At least one image is required.'
+  if (images.length === 0)     errors.images = 'At least one image is required.'
   return errors
 }
 
 // ── Tabs ─────────────────────────────────────────────────────────────────────
 const TABS = [
-  { id: 'basic',   label: 'Basic Info' },
-  { id: 'images',  label: 'Images' },
-  { id: 'details', label: 'Product Details' },
-  { id: 'tags',    label: 'Tags & Status' },
+  { id: 'basic',  label: 'Basic Info' },
+  { id: 'images', label: 'Images' },
+  { id: 'tags',   label: 'Tags & Status' },
 ]
 
-export default function AddProductModal({ onClose, editProduct = null }) {
-  const { addProduct, updateProduct } = useProducts()
+// ── Fish-specific preset tags ────────────────────────────────────────────────
+const FISH_PRESET_TAGS = [
+  'Compact', 'Calm', 'Desk Friendly', 'Balanced', 'Botanical', 'Premium',
+  'Luxury', 'Statement', 'Gift Ready', 'Betta Fish', 'Shrimp', 'Crab',
+  'Pleco Fish', 'Beginner', 'Low Maintenance',
+]
+
+export default function AddFishProductModal({ onClose, editProduct = null }) {
+  const { addFishProduct, updateFishProduct } = useFishProducts()
   const isEditing = !!editProduct
 
-  const [form,    setForm]    = useState(isEditing ? toFormState(editProduct) : EMPTY_FORM)
-  const [images,  setImages]  = useState([])
-  const [tab,     setTab]     = useState('basic')
-  const [errors,  setErrors]  = useState({})
-  const [status,  setStatus]  = useState('idle') // 'idle' | 'success' | 'error'
-  const [saving,  setSaving]  = useState(false)
+  const [form,   setForm]   = useState(isEditing ? toFormState(editProduct) : EMPTY_FORM)
+  const [images, setImages] = useState(() => {
+    if (!isEditing || !editProduct) return []
+    // Pre-populate images from existing product
+    const existing = []
+    if (editProduct.image) existing.push({ id: 'main-' + Date.now(), preview: editProduct.image })
+    if (editProduct.gallery) {
+      editProduct.gallery.forEach((url, i) => {
+        existing.push({ id: `gallery-${i}-${Date.now()}`, preview: url })
+      })
+    }
+    return existing
+  })
+  const [tab,    setTab]    = useState('basic')
+  const [errors, setErrors] = useState({})
+  const [status, setStatus] = useState('idle')
+  const [saving, setSaving] = useState(false)
 
   const modalRef = useRef()
 
@@ -137,13 +100,9 @@ export default function AddProductModal({ onClose, editProduct = null }) {
 
   const handleChange = (e) => {
     const { name, value, type, checked } = e.target
-    const val = type === 'checkbox' ? checked : type === 'toggle' ? e.target.value : value
+    const val = type === 'checkbox' ? checked : value
     setForm((prev) => ({ ...prev, [name]: val }))
     if (errors[name]) setErrors((prev) => { const n = { ...prev }; delete n[name]; return n })
-  }
-
-  const handleCategoryChange = (e) => {
-    setForm((prev) => ({ ...prev, categories: [e.target.value] }))
   }
 
   const handleSubmit = async (e) => {
@@ -151,45 +110,45 @@ export default function AddProductModal({ onClose, editProduct = null }) {
     const errs = validate(form, images)
     if (Object.keys(errs).length) {
       setErrors(errs)
-      // Jump to first tab with errors
-      if (errs.name || errs.tagline || errs.price)    setTab('basic')
-      else if (errs.images)                            setTab('images')
+      if (errs.name || errs.shortDescription || errs.price) setTab('basic')
+      else if (errs.images) setTab('images')
       return
     }
 
     setSaving(true)
     try {
-      // Simulates async API call — swap with real fetch() later
-      await new Promise((r) => setTimeout(r, 400))
+      await new Promise((r) => setTimeout(r, 300))
       const payload = { ...form, images }
       if (isEditing) {
-        updateProduct(editProduct.id, payload)
+        updateFishProduct(editProduct.id, payload)
       } else {
-        addProduct(payload)
+        addFishProduct(payload)
       }
       setStatus('success')
-      setTimeout(onClose, 1200)
+      setTimeout(onClose, 1000)
     } catch {
       setStatus('error')
       setSaving(false)
     }
   }
 
+  // Live preview image
+  const previewImage = images[0]?.preview || '/assets/fishs.jpeg'
+
   return (
-    // Backdrop
     <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-charcoal/40 px-4 py-8">
       <div
         ref={modalRef}
-        className="relative w-full max-w-6xl bg-white rounded-3xl shadow-lift my-auto"
+        className="relative w-full max-w-5xl bg-white rounded-3xl shadow-lift my-auto"
       >
         {/* Header */}
         <div className="flex items-center justify-between px-7 py-5 border-b border-charcoal/8">
           <div className="flex items-center gap-3">
             <div className="w-9 h-9 rounded-xl bg-olive/10 text-olive flex items-center justify-center">
-              <Package size={18} />
+              <Fish size={18} />
             </div>
             <h2 className="font-serif text-2xl text-charcoal">
-              {isEditing ? `Edit — ${editProduct.name}` : 'Add New Package'}
+              {isEditing ? `Edit — ${editProduct.name}` : 'Add Fish Product'}
             </h2>
           </div>
           <button
@@ -205,7 +164,7 @@ export default function AddProductModal({ onClose, editProduct = null }) {
         {/* Success / error banner */}
         {status === 'success' && (
           <div className="mx-7 mt-5 flex items-center gap-2 bg-sage-50 text-sage-700 rounded-xl px-4 py-3 text-sm">
-            <CheckCircle2 size={16} /> Package {isEditing ? 'updated' : 'added'} successfully!
+            <CheckCircle2 size={16} /> Fish product {isEditing ? 'updated' : 'added'} successfully!
           </div>
         )}
         {status === 'error' && (
@@ -233,7 +192,7 @@ export default function AddProductModal({ onClose, editProduct = null }) {
             <div className="flex items-center gap-1 px-7 pt-5 pb-1 overflow-x-auto no-scrollbar">
               {TABS.map((t) => {
                 const hasError =
-                  (t.id === 'basic'  && (errors.name || errors.tagline || errors.price)) ||
+                  (t.id === 'basic'  && (errors.name || errors.shortDescription || errors.price)) ||
                   (t.id === 'images' && errors.images)
                 return (
                   <button
@@ -255,72 +214,54 @@ export default function AddProductModal({ onClose, editProduct = null }) {
               })}
             </div>
 
-            <form id="product-form" onSubmit={handleSubmit} className="px-7 py-6 space-y-6">
+            <form id="fish-product-form" onSubmit={handleSubmit} className="px-7 py-6 space-y-6">
               {/* ── Basic Info ── */}
               {tab === 'basic' && (
                 <>
-                  <FormSection title="Basic Information">
-                    <div className="grid sm:grid-cols-2 gap-4">
-                      <FormInput
-                        label="Package Name" name="name" value={form.name}
-                        onChange={handleChange} required
-                        placeholder="e.g. The Stillness Collection"
-                        error={errors.name}
-                      />
-                      <FormInput
-                        label="Candle Scent" name="scent" value={form.scent}
-                        onChange={handleChange}
-                        placeholder="e.g. Lavender + Chamomile"
-                      />
-                    </div>
+                  <FormSection title="Product Information">
                     <FormInput
-                      label="Short Description (Tagline)" name="tagline" value={form.tagline}
+                      label="Product Name" name="name" value={form.name}
                       onChange={handleChange} required
-                      placeholder="One sentence that captures the feeling of this package"
-                      error={errors.tagline}
+                      placeholder="e.g. Mini Aquarium"
+                      error={errors.name}
+                    />
+                    <FormInput
+                      label="Short Description" name="shortDescription" value={form.shortDescription}
+                      onChange={handleChange} required
+                      placeholder="One sentence summary of this product"
+                      error={errors.shortDescription}
                     />
                     <FormTextarea
                       label="Full Description" name="description" value={form.description}
-                      onChange={handleChange} rows={4}
-                      placeholder="Describe the package in detail — what it includes, who it's for, and the feeling it creates."
+                      onChange={handleChange} rows={3}
+                      placeholder="Describe the product in detail — what it includes, who it's for."
+                    />
+                    <FormTextarea
+                      label="Product Story" name="story" value={form.story}
+                      onChange={handleChange} rows={3}
+                      placeholder="The story behind this product — what inspired it."
                     />
                   </FormSection>
 
-                  <FormSection title="Category & Collection">
-                    <div className="grid sm:grid-cols-2 gap-4">
-                      <FormSelect
-                        label="Category" name="category" value={form.categories[0]}
-                        onChange={handleCategoryChange}
-                        options={CATEGORY_OPTIONS} required
-                      />
-                      <FormSelect
-                        label="Collection" name="collection" value={form.collection}
-                        onChange={handleChange}
-                        options={COLLECTION_OPTIONS}
-                      />
-                    </div>
+                  <FormSection title="Sub-Category">
+                    <FormSelect
+                      label="Fish Sub-Category" name="fishSubCategory" value={form.fishSubCategory}
+                      onChange={handleChange}
+                      options={FISH_SUB_CATEGORY_OPTIONS} required
+                    />
                   </FormSection>
 
-                  <FormSection title="Pricing & Inventory">
-                    <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                  <FormSection title="Pricing">
+                    <div className="grid sm:grid-cols-2 gap-4">
                       <FormInput
-                        label="Price (LE)" name="price" type="number" value={form.price}
-                        onChange={handleChange} required placeholder="e.g. 1250"
+                        label="Price (EGP)" name="price" type="number" value={form.price}
+                        onChange={handleChange} required placeholder="e.g. 950"
                         error={errors.price}
                       />
                       <FormInput
                         label="Discount Price" name="discountPrice" type="number" value={form.discountPrice}
                         onChange={handleChange} placeholder="Optional"
                         hint="Leave blank for no discount"
-                      />
-                      <FormInput
-                        label="Stock Qty" name="stock" type="number" value={form.stock}
-                        onChange={handleChange} placeholder="e.g. 50"
-                      />
-                      <FormInput
-                        label="SKU" name="sku" value={form.sku}
-                        onChange={handleChange} placeholder="Optional"
-                        hint="For inventory tracking"
                       />
                     </div>
                   </FormSection>
@@ -342,51 +283,6 @@ export default function AddProductModal({ onClose, editProduct = null }) {
                 </FormSection>
               )}
 
-              {/* ── Product Details ── */}
-              {tab === 'details' && (
-                <>
-                  <FormSection title="Plant & Package Details">
-                    <div className="grid sm:grid-cols-2 gap-4">
-                      <FormSelect
-                        label="Package Size" name="size" value={form.size}
-                        onChange={handleChange} options={SIZE_OPTIONS}
-                      />
-                      <FormSelect
-                        label="Difficulty Level" name="difficulty" value={form.difficulty}
-                        onChange={handleChange} options={DIFFICULTY_OPTIONS}
-                      />
-                      <FormSelect
-                        label="Light Requirement" name="light" value={form.light}
-                        onChange={handleChange} options={LIGHT_OPTIONS}
-                      />
-                      <FormSelect
-                        label="Watering Frequency" name="watering" value={form.watering}
-                        onChange={handleChange} options={WATERING_OPTIONS}
-                      />
-                    </div>
-                  </FormSection>
-
-                  <FormSection title="Plant Properties">
-                    <div className="divide-y divide-charcoal/6">
-                      <FormToggle
-                        label="Pet Friendly"
-                        name="petFriendly"
-                        checked={form.petFriendly}
-                        onChange={handleChange}
-                        hint="Safe for cats and dogs"
-                      />
-                      <FormToggle
-                        label="Air Purifying"
-                        name="airPurifying"
-                        checked={form.airPurifying}
-                        onChange={handleChange}
-                        hint="Removes toxins from the air"
-                      />
-                    </div>
-                  </FormSection>
-                </>
-              )}
-
               {/* ── Tags & Status ── */}
               {tab === 'tags' && (
                 <>
@@ -397,6 +293,19 @@ export default function AddProductModal({ onClose, editProduct = null }) {
                       value={form.tags}
                       onChange={handleChange}
                     />
+                    {/* Fish-specific quick-add tags */}
+                    <div className="flex flex-wrap gap-1.5 mt-2">
+                      {FISH_PRESET_TAGS.filter((t) => !form.tags.includes(t)).map((t) => (
+                        <button
+                          key={t}
+                          type="button"
+                          onClick={() => handleChange({ target: { name: 'tags', value: [...form.tags, t] } })}
+                          className="text-[11px] text-charcoal/50 hover:text-olive border border-charcoal/10 hover:border-olive/30 px-2.5 py-1 rounded-full transition duration-200"
+                        >
+                          + {t}
+                        </button>
+                      ))}
+                    </div>
                   </FormSection>
 
                   <FormSection title="Product Status">
@@ -443,11 +352,11 @@ export default function AddProductModal({ onClose, editProduct = null }) {
                 ) : (
                   <button
                     type="submit"
-                    form="product-form"
+                    form="fish-product-form"
                     disabled={saving}
                     className="bg-olive hover:bg-olive-dark text-cream px-6 py-2.5 rounded-full text-sm font-medium uppercase tracking-label transition duration-300 hover:scale-[1.02] active:scale-[0.98] disabled:opacity-60"
                   >
-                    {saving ? 'Saving…' : isEditing ? 'Save Changes' : 'Add Package'}
+                    {saving ? 'Saving…' : isEditing ? 'Save Changes' : 'Add Product'}
                   </button>
                 )}
               </div>
@@ -456,7 +365,43 @@ export default function AddProductModal({ onClose, editProduct = null }) {
 
           {/* ── Right: Live Preview ── */}
           <div className="lg:w-72 xl:w-80 shrink-0 p-6 bg-ivory rounded-b-3xl lg:rounded-b-none lg:rounded-r-3xl">
-            <ProductPreview form={form} images={images} />
+            <div className="space-y-4">
+              <div className="overflow-hidden rounded-2xl bg-beige border border-charcoal/8">
+                <OptimizedImage
+                  src={previewImage}
+                  alt="Product preview"
+                  className="w-full h-40 object-cover"
+                />
+              </div>
+              <div>
+                <h3 className="font-serif text-lg text-charcoal">
+                  {form.name || 'Product Name'}
+                </h3>
+                <p className="text-xs text-charcoal/50 mt-1 line-clamp-2">
+                  {form.shortDescription || 'Short description will appear here...'}
+                </p>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-xs uppercase tracking-label text-charcoal/40">
+                  {form.fishSubCategory === 'aquariums' ? '🐚 Aquariums' : '💧 Aquatic Life'}
+                </span>
+                <span className="font-serif text-lg text-brown">
+                  {form.price ? `EGP ${Number(form.price).toLocaleString()}` : 'EGP —'}
+                </span>
+              </div>
+              {form.tags.length > 0 && (
+                <div className="flex flex-wrap gap-1">
+                  {form.tags.slice(0, 4).map((tag) => (
+                    <span key={tag} className="text-[10px] bg-beige text-charcoal/50 px-2 py-0.5 rounded-full">
+                      {tag}
+                    </span>
+                  ))}
+                </div>
+              )}
+              <p className="text-[10px] text-charcoal/30 text-center pt-2 border-t border-charcoal/8">
+                Preview updates as you type
+              </p>
+            </div>
           </div>
         </div>
       </div>
@@ -467,23 +412,14 @@ export default function AddProductModal({ onClose, editProduct = null }) {
 // Convert an existing product back into the flat form shape for editing
 function toFormState(product) {
   return {
-    name:          product.name        || '',
-    tagline:       product.tagline     || '',
-    description:   product.description || '',
-    categories:    product.categories  || ['calm'],
-    collection:    product.id          || 'stillness',
-    price:         product.price?.toString()         || '',
-    discountPrice: product.discountPrice?.toString() || '',
-    stock:         product.stock?.toString()         || '',
-    sku:           product.sku         || '',
-    status:        product.status      || 'active',
-    size:          product.size        || 'medium',
-    difficulty:    product.difficulty  || 'beginner',
-    light:         product.light       || 'medium',
-    watering:      product.watering    || 'weekly',
-    petFriendly:   !!product.petFriendly,
-    airPurifying:  !!product.airPurifying,
-    tags:          product.tags        || [],
-    scent:         product.scent       || '',
+    name:             product.name             || '',
+    shortDescription: product.shortDescription || '',
+    description:      product.description      || '',
+    story:            product.story            || '',
+    fishSubCategory:  product.fishSubCategory  || 'aquatic-life',
+    price:            product.price?.toString() || '',
+    discountPrice:    product.discountPrice?.toString() || '',
+    tags:             product.tags             || [],
+    status:           product.status           || 'active',
   }
 }

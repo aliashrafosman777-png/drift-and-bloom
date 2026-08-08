@@ -14,10 +14,25 @@
 import React, { createContext, useContext, useEffect, useMemo, useState, useCallback } from 'react'
 import { apiFetch } from '../lib/api'
 import { BEST_SELLER_CATEGORY_ID, products as SEED } from '../data/products'
+import { useFishProducts } from './FishProductContext'
 
 const packageFallbackImage = "/assets/package.png"
+const CUSTOM_PRODUCTS_STORAGE_KEY = 'db_custom_products_v1'
 
 const ProductContext = createContext(null)
+
+const safeParse = (raw, fallback) => {
+  try {
+    return raw ? JSON.parse(raw) : fallback
+  } catch {
+    return fallback
+  }
+}
+
+function readStoredCustomProducts() {
+  if (typeof window === 'undefined') return []
+  return safeParse(localStorage.getItem(CUSTOM_PRODUCTS_STORAGE_KEY), [])
+}
 
 /**
  * Normalize a DB product into the shape the frontend expects.
@@ -35,9 +50,34 @@ function normalizeProduct(p) {
 }
 
 export function ProductProvider({ children }) {
-  const [products, setProducts] = useState(SEED)
-  const [loading,  setLoading]  = useState(true)
-  const [error,    setError]    = useState(null)
+  const [baseProducts, setBaseProducts] = useState(SEED)
+  const [customProducts, setCustomProducts] = useState([])
+  const [isHydrated, setIsHydrated] = useState(false)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState(null)
+  
+  // Safely consume FishProductContext if available
+  const fishCtx = useFishProducts()
+  const fishProducts = fishCtx?.fishProducts || []
+
+  // Hydrate customProducts from localStorage on mount (client-side only)
+  useEffect(() => {
+    const stored = readStoredCustomProducts()
+    if (stored && stored.length > 0) {
+      setCustomProducts(stored)
+    }
+    setIsHydrated(true)
+  }, [])
+
+  // Persist custom products to localStorage AFTER initial hydration
+  useEffect(() => {
+    if (!isHydrated) return
+    try {
+      localStorage.setItem(CUSTOM_PRODUCTS_STORAGE_KEY, JSON.stringify(customProducts))
+    } catch {
+      /* ignore storage errors */
+    }
+  }, [customProducts, isHydrated])
 
   /* ── Fetch products from API on mount ───────────────────────────────── */
   useEffect(() => {
@@ -48,12 +88,10 @@ export function ProductProvider({ children }) {
         setLoading(true)
         const res = await apiFetch('/api/products?limit=100')
         if (!cancelled && res.data?.products?.length > 0) {
-          setProducts(res.data.products.map(normalizeProduct))
+          setBaseProducts(res.data.products.map(normalizeProduct))
         }
-        // If API returns empty, keep SEED data (DB not seeded yet)
       } catch (err) {
         console.warn('ProductContext: API fetch failed, using seed data.', err)
-        // Keep SEED data as fallback — frontend still works without backend
       } finally {
         if (!cancelled) setLoading(false)
       }
@@ -62,6 +100,48 @@ export function ProductProvider({ children }) {
     fetchProducts()
     return () => { cancelled = true }
   }, [])
+
+  // Format fish products into store-compatible product objects
+  const formattedFishProducts = useMemo(() => {
+    return (fishProducts || []).map((fp) => ({
+      id: fp.id,
+      _id: fp.id,
+      name: fp.name,
+      tagline: fp.shortDescription || fp.tagline || 'Aquatic setup package',
+      shortDescription: fp.shortDescription || fp.tagline || '',
+      description: fp.description || fp.shortDescription || '',
+      story: fp.story || '',
+      price: Number(fp.price) || 0,
+      discountPrice: fp.discountPrice ? Number(fp.discountPrice) : null,
+      rating: Number(fp.rating) || 5.0,
+      reviews: Number(fp.reviews) || 0,
+      image: fp.image || '/assets/fishs.jpeg',
+      gallery: fp.gallery?.length ? fp.gallery : [fp.image || '/assets/fishs.jpeg'],
+      category: 'fish',
+      categories: ['fish', fp.fishSubCategory, ...(fp.tags || [])],
+      fishSubCategory: fp.fishSubCategory,
+      tags: fp.tags || [],
+      scent: 'Botanical Water & Living Aquaria',
+      status: fp.status || 'active',
+      isActive: fp.status !== 'draft' && fp.status !== 'out_of_stock',
+    }))
+  }, [fishProducts])
+
+  // Merge all sources into one unified catalog
+  const products = useMemo(() => {
+    const map = new Map()
+    // 1. Base seed/API products
+    baseProducts.forEach((p) => map.set(p.id || p._id, p))
+    // 2. Custom added packages
+    customProducts.forEach((p) => map.set(p.id || p._id, p))
+    // 3. Fish products from admin
+    formattedFishProducts.forEach((p) => {
+      if (p.isActive !== false) {
+        map.set(p.id, p)
+      }
+    })
+    return Array.from(map.values())
+  }, [baseProducts, customProducts, formattedFishProducts])
 
   /* ── CRUD helpers ──────────────────────────────────────────────────── */
 
@@ -74,7 +154,7 @@ export function ProductProvider({ children }) {
         body: JSON.stringify(formData),
       })
       const product = normalizeProduct(res.data)
-      setProducts((prev) => [product, ...prev])
+      setCustomProducts((prev) => [product, ...prev])
       return product
     } catch (err) {
       // Fallback: local-only add for demo
@@ -86,7 +166,7 @@ export function ProductProvider({ children }) {
         '-' +
         Date.now()
       const product = buildLocalProduct(id, rawForm)
-      setProducts((prev) => [product, ...prev])
+      setCustomProducts((prev) => [product, ...prev])
       return product
     }
   }, [])
@@ -100,12 +180,18 @@ export function ProductProvider({ children }) {
         body: JSON.stringify(formData),
       })
       const updated = normalizeProduct(res.data)
-      setProducts((prev) =>
+      setCustomProducts((prev) =>
+        prev.map((p) => (p.id === id || p._id === id ? { ...p, ...updated } : p))
+      )
+      setBaseProducts((prev) =>
         prev.map((p) => (p.id === id || p._id === id ? { ...p, ...updated } : p))
       )
     } catch {
       // Fallback: local-only update
-      setProducts((prev) =>
+      setCustomProducts((prev) =>
+        prev.map((p) => (p.id === id ? { ...p, ...buildLocalProduct(id, rawForm) } : p))
+      )
+      setBaseProducts((prev) =>
         prev.map((p) => (p.id === id ? { ...p, ...buildLocalProduct(id, rawForm) } : p))
       )
     }
@@ -118,7 +204,8 @@ export function ProductProvider({ children }) {
     } catch {
       // proceed with local removal anyway
     }
-    setProducts((prev) => prev.filter((p) => p.id !== id && p._id !== id))
+    setCustomProducts((prev) => prev.filter((p) => p.id !== id && p._id !== id))
+    setBaseProducts((prev) => prev.filter((p) => p.id !== id && p._id !== id))
   }, [])
 
   /** Find a single product by id from live state. */

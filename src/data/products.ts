@@ -61,7 +61,15 @@ export const isBestSellerProduct = (product) =>
   );
 
 export const packageFilterOptions = [
+  { id: "all", label: "All Packages" },
   { id: BEST_SELLER_CATEGORY_ID, label: "⭐ Best Sellers" },
+  { id: "calm", label: "Calm" },
+  { id: "gifting", label: "Gifting" },
+  { id: "love", label: "Love" },
+  { id: "self-care", label: "Self-Care" },
+  { id: "fish", label: "🐟 Fish & Aquariums" },
+  { id: "aquariums", label: "🐚 Aquariums" },
+  { id: "aquatic-life", label: "💧 Aquatic Life" },
 ];
 
 export const categories = [
@@ -72,6 +80,9 @@ export const categories = [
   { id: "love", label: "Love" },
   { id: "self-care", label: "Self-Care" },
   { id: "new-beginnings", label: "New Beginnings" },
+  { id: "fish", label: "Fish & Aquariums" },
+  { id: "aquariums", label: "Aquariums" },
+  { id: "aquatic-life", label: "Aquatic Life" },
 ];
 
 export const products = [
@@ -504,6 +515,31 @@ export const buildPackageCategories = [
   },
 ];
 
+export const fishSubCategories = [
+  {
+    id: "aquariums",
+    label: "Aquariums",
+    description:
+      "Build your setup starting with the aquarium. Choose the size first, then select the shape and details.",
+    image: fishsImg,
+    icon: "aquarium",
+    tags: ["4 Sizes", "Choose Shape", "Custom Setup"],
+    cta: "Choose Aquarium",
+    comingSoon: true,
+  },
+  {
+    id: "aquatic-life",
+    label: "Aquatic Life",
+    description:
+      "Build your setup around your preferred aquatic life. Choose from Betta fish, shrimp, crab, or Pleco fish.",
+    image: fishsImg,
+    icon: "aquatic-life",
+    tags: ["Betta Fish", "Shrimp", "Crab", "Pleco Fish"],
+    cta: "Choose Aquatic Life",
+    comingSoon: false,
+  },
+];
+
 export const packageBuilderProducts = [
   {
     id: "candle-lavender",
@@ -592,6 +628,7 @@ export const packageBuilderProducts = [
     shortDescription: "Compact aquarium for refined small spaces.",
     image: fishsImg,
     category: "fish",
+    fishSubCategory: "aquatic-life",
     story:
       "Mini Aquarium is a tiny world of movement and stillness, designed to make even a small corner feel considered.",
     tags: ["Compact", "Calm", "Desk Friendly"],
@@ -605,6 +642,7 @@ export const packageBuilderProducts = [
     shortDescription: "Balanced size with a calm botanical scene.",
     image: fishsImg,
     category: "fish",
+    fishSubCategory: "aquatic-life",
     story:
       "Medium Aquarium is for the person who wants a living centerpiece — calm, expressive, and never loud.",
     tags: ["Balanced", "Botanical", "Premium"],
@@ -618,6 +656,7 @@ export const packageBuilderProducts = [
     shortDescription: "A premium living centerpiece for gifting.",
     image: fishsImg,
     category: "fish",
+    fishSubCategory: "aquatic-life",
     story:
       "Premium Aquarium turns the package into a full visual ritual — a quiet underwater garden made to be remembered.",
     tags: ["Luxury", "Statement", "Gift Ready"],
@@ -632,4 +671,19 @@ export const packageBuilderProductsByCategory = buildPackageCategories.reduce(
     return groups;
   },
   {},
+);
+
+export const fishSubCategoryProducts = fishSubCategories.reduce(
+  (groups, sub) => {
+    groups[sub.id] = packageBuilderProducts.filter(
+      (product) => product.category === "fish" && product.fishSubCategory === sub.id,
+    );
+    return groups;
+  },
+  {},
+);
+
+// Seed data for the FishProductContext — the initial fish builder products
+export const FISH_PRODUCT_SEED = packageBuilderProducts.filter(
+  (product) => product.category === "fish",
 );

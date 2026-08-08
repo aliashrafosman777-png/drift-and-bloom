@@ -3,10 +3,41 @@
 
 import React from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
-import { ArrowRight, Minus, PackageOpen, Plus, RotateCcw, ShoppingBag, Trash2, X } from 'lucide-react'
+import { ArrowRight, Droplets, Fish, Grid2X2, Minus, PackageOpen, Plus, RotateCcw, Shell, ShoppingBag, Trash2, X } from 'lucide-react'
 import Button from '../common/Button'
 import EmptyPackageIllustration from './EmptyPackageIllustration'
 import OptimizedImage from '../common/OptimizedImage'
+import { fishSubCategories } from '../../data/products'
+
+const fishSetupSteps = [
+  { id: 'category', label: 'Category', icon: Grid2X2 },
+  { id: 'fish-setup', label: 'Fish Setup', icon: Fish },
+  { id: 'aquarium', label: 'Aquarium', icon: Shell },
+  { id: 'aquatic-life', label: 'Aquatic Life', icon: Droplets },
+  { id: 'add-ons', label: 'Add-ons', icon: Plus },
+]
+
+function getFishStepStatus(stepId, fishSubCategory, selectedItems) {
+  const fishItems = selectedItems?.fish || []
+  const hasFishItems = fishItems.length > 0
+
+  switch (stepId) {
+    case 'category':
+      return '—'
+    case 'fish-setup':
+      if (!fishSubCategory) return 'Not selected yet'
+      const sub = fishSubCategories.find(s => s.id === fishSubCategory)
+      return sub?.label || fishSubCategory
+    case 'aquarium':
+      return fishSubCategory === 'aquariums' ? (hasFishItems ? 'Selected' : 'Browsing') : 'Not selected yet'
+    case 'aquatic-life':
+      return fishSubCategory === 'aquatic-life' ? (hasFishItems ? 'Selected' : 'Browsing') : 'Not selected yet'
+    case 'add-ons':
+      return 'Not selected yet'
+    default:
+      return 'Not selected yet'
+  }
+}
 
 export default function PackageSummary({
   categories,
@@ -15,6 +46,7 @@ export default function PackageSummary({
   total,
   progress,
   customizations = {},
+  fishSubCategory = null,
   onChangeCategory,
   onClear,
   onAddToCart,
@@ -22,6 +54,7 @@ export default function PackageSummary({
   onRemove,
 }) {
   const continueDisabled = !progress.hasItems
+  const hasFishCategory = categories.some(c => c.id === 'fish')
 
   return (
     <motion.aside
@@ -67,6 +100,35 @@ export default function PackageSummary({
           Add at least one product, then finalize your custom package.
         </p>
       </div>
+
+      {hasFishCategory && (
+        <div className="mb-6 space-y-1">
+          {fishSetupSteps.map(({ id, label, icon: Icon }) => {
+            const status = getFishStepStatus(id, fishSubCategory, selectedItems)
+            const isActive = status !== 'Not selected yet'
+            return (
+              <div
+                key={id}
+                className="flex items-center justify-between gap-3 rounded-xl px-3 py-2.5 transition duration-200"
+              >
+                <div className="flex items-center gap-3">
+                  <span className={`flex h-7 w-7 items-center justify-center rounded-full ${
+                    isActive ? 'bg-olive/10 text-olive' : 'bg-charcoal/5 text-charcoal/30'
+                  }`}>
+                    <Icon size={14} />
+                  </span>
+                  <span className={`text-sm ${isActive ? 'font-medium text-charcoal' : 'text-charcoal/50'}`}>
+                    {label}
+                  </span>
+                </div>
+                <span className={`text-xs ${isActive ? 'text-olive' : 'text-charcoal/35'}`}>
+                  {status}
+                </span>
+              </div>
+            )
+          })}
+        </div>
+      )}
 
       {selectedList.length === 0 ? (
         <EmptyPackageIllustration />

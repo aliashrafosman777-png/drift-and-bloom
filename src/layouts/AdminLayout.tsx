@@ -7,6 +7,7 @@ import { usePathname, useRouter } from 'next/navigation'
 import {
   LayoutDashboard,
   Package,
+  Fish,
   ShoppingCart,
   Users,
   LogOut,
@@ -20,11 +21,12 @@ import { useAuth } from '../context/AuthContext'
 import LoadingFallback from '../components/common/LoadingFallback'
 
 const navItems = [
-  { name: 'Dashboard', href: '/admin', icon: LayoutDashboard, end: true },
-  { name: 'Packages',  href: '/admin/products', icon: Package },
-  { name: 'Orders',    href: '/admin/orders', icon: ShoppingCart },
-  { name: 'Customers', href: '/admin/customers', icon: Users },
-  { name: 'Messages',  href: '/admin/messages', icon: MessageSquare },
+  { name: 'Dashboard',     href: '/admin',               icon: LayoutDashboard, end: true },
+  { name: 'Packages',      href: '/admin/products',      icon: Package },
+  { name: 'Fish Products', href: '/admin/fish-products',  icon: Fish },
+  { name: 'Orders',        href: '/admin/orders',        icon: ShoppingCart },
+  { name: 'Customers',     href: '/admin/customers',     icon: Users },
+  { name: 'Messages',      href: '/admin/messages',      icon: MessageSquare },
 ]
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {

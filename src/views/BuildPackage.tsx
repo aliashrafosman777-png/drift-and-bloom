@@ -16,14 +16,17 @@ import Container from "../components/common/Container";
 import CategoryPills from "../components/build-package/CategoryPills";
 import ProductChoiceCard from "../components/build-package/ProductChoiceCard";
 import PackageSummary from "../components/build-package/PackageSummary";
+import FishSetupChooser from "../components/build-package/FishSetupChooser";
 import CustomizationPanel, {
   createDefaultCustomizations,
 } from "../components/build-package/CustomizationPanel";
 import {
   buildPackageCategories,
+  fishSubCategories,
   packageBuilderProductsByCategory,
 } from "../data/products";
 import { usePackage } from "../context/PackageContext";
+import { useFishProducts } from "../context/FishProductContext";
 import { useCart } from "../context/CartContext";
 import { useToast } from "../components/common/Toast";
 const packageIllustration = "/assets/package.png";
@@ -50,9 +53,9 @@ const categoryAliases = {
   aquariums: "fish",
 };
 
-const flowSteps = [
+const getFlowSteps = (categoryId) => [
   "Choose Category",
-  "Choose Product",
+  categoryId === "fish" ? "Choose Fish Setup" : "Choose Product",
   "Customize",
   "Review Package",
   "Add Package to Cart",
@@ -65,7 +68,8 @@ const normalizeCategoryParam = (value) =>
       .toLowerCase()
   ] || null;
 
-function FlowProgress() {
+function FlowProgress({ activeCategoryId }) {
+  const flowSteps = getFlowSteps(activeCategoryId);
   return (
     <div className="mb-8 rounded-[24px] border border-gold/15 bg-white/65 p-4 shadow-soft backdrop-blur sm:p-5">
       <div
@@ -74,7 +78,7 @@ function FlowProgress() {
       >
         {flowSteps.map((step, index) => (
           <div
-            key={step}
+            key={`${step}-${index}`}
             className="flex items-center gap-3 sm:flex-col sm:items-start"
           >
             <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-olive text-sm text-cream shadow-soft">
@@ -97,6 +101,7 @@ function FlowProgress() {
 
 export default function BuildPackage() {
   const [activeIndex, setActiveIndex] = useState(0);
+  const [fishSubCategory, setFishSubCategory] = useState(null);
   const [customizations, setCustomizations] = useState(
     createDefaultCustomizations,
   );
@@ -146,9 +151,17 @@ export default function BuildPackage() {
   );
 
   const activeCategory = displayCategories[activeIndex];
+  const isFishCategory = activeCategory.id === "fish";
+  const showFishChooser = isFishCategory && fishSubCategory === null;
+  const { getFishProductsBySubCategory } = useFishProducts();
   const activeProducts = useMemo(
-    () => packageBuilderProductsByCategory[activeCategory.id] || [],
-    [activeCategory.id],
+    () => {
+      if (isFishCategory && fishSubCategory) {
+        return getFishProductsBySubCategory(fishSubCategory);
+      }
+      return packageBuilderProductsByCategory[activeCategory.id] || [];
+    },
+    [activeCategory.id, isFishCategory, fishSubCategory, getFishProductsBySubCategory],
   );
   const total = getTotal();
   const progress = getProgress();
@@ -184,9 +197,18 @@ export default function BuildPackage() {
     );
     const nextCategory = displayCategories[nextIndex];
     setActiveIndex(nextIndex);
+    // Reset fish sub-category when switching away from fish
+    if (nextCategory.id !== "fish") {
+      setFishSubCategory(null);
+    }
     const params = new URLSearchParams(searchParams.toString());
     params.set("category", nextCategory.id);
     router.push(`${pathname}?${params.toString()}`);
+    scrollToBuilderTop();
+  };
+
+  const handleFishSubCategorySelect = (subCategoryId) => {
+    setFishSubCategory(subCategoryId);
     scrollToBuilderTop();
   };
 
@@ -300,7 +322,7 @@ export default function BuildPackage() {
         id="package-builder"
       >
         <Container>
-          <FlowProgress />
+          <FlowProgress activeCategoryId={activeCategory.id} />
 
           <div className="grid grid-cols-1 gap-8 lg:grid-cols-[minmax(0,7fr)_minmax(320px,3fr)] lg:gap-10 xl:gap-12">
             <div className="min-w-0 space-y-8">
@@ -357,45 +379,68 @@ export default function BuildPackage() {
                       >
                         <span className="flex items-center gap-3">
                           <span aria-hidden="true">{activeCategory.emoji}</span>
-                          <span>Choose {activeCategory.label}</span>
+                          <span>
+                            {showFishChooser
+                              ? "Choose Fish Setup"
+                              : isFishCategory && fishSubCategory
+                                ? `Choose ${fishSubCategories.find(s => s.id === fishSubCategory)?.label || ""}`
+                                : `Choose ${activeCategory.label}`}
+                          </span>
                         </span>
                       </h2>
                       <p className="mt-3 max-w-2xl text-sm leading-relaxed text-charcoal/60 sm:text-base">
-                        {categoryNotes[activeCategory.id]}
+                        {showFishChooser
+                          ? "Start building your fish package by choosing whether you want to begin with the aquarium or the aquatic life."
+                          : categoryNotes[activeCategory.id]}
                       </p>
                     </div>
-                    {activeIndex < displayCategories.length - 1 ? (
-                      <button
-                        type="button"
-                        onClick={() => moveToCategory(activeIndex + 1)}
-                        className="inline-flex items-center gap-2 text-sm text-olive transition duration-300 hover:text-olive-dark"
-                      >
-                        Next: {displayCategories[activeIndex + 1].label}{" "}
-                        <ArrowRight size={14} />
-                      </button>
-                    ) : (
-                      <button
-                        type="button"
-                        onClick={() => moveToCategory(0)}
-                        className="inline-flex items-center gap-2 text-sm text-olive transition duration-300 hover:text-olive-dark"
-                      >
-                        Back to Plants <ArrowRight size={14} />
-                      </button>
-                    )}
+                    <div className="flex items-center gap-3">
+                      {isFishCategory && fishSubCategory && (
+                        <button
+                          type="button"
+                          onClick={() => setFishSubCategory(null)}
+                          className="inline-flex items-center gap-2 text-sm text-olive transition duration-300 hover:text-olive-dark"
+                        >
+                          ← Back to Fish Setup
+                        </button>
+                      )}
+                      {activeIndex < displayCategories.length - 1 ? (
+                        <button
+                          type="button"
+                          onClick={() => moveToCategory(activeIndex + 1)}
+                          className="inline-flex items-center gap-2 text-sm text-olive transition duration-300 hover:text-olive-dark"
+                        >
+                          Next: {displayCategories[activeIndex + 1].label}{" "}
+                          <ArrowRight size={14} />
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => moveToCategory(0)}
+                          className="inline-flex items-center gap-2 text-sm text-olive transition duration-300 hover:text-olive-dark"
+                        >
+                          Back to Plants <ArrowRight size={14} />
+                        </button>
+                      )}
+                    </div>
                   </div>
 
-                  <div className="space-y-5">
-                    {activeProducts.map((product) => (
-                      <ProductChoiceCard
-                        key={product.id}
-                        product={product}
-                        quantity={getProductQuantity(product.id)}
-                        onAdd={handleAddProduct}
-                        onIncrease={(item) => incrementItem(item.id)}
-                        onDecrease={(item) => decrementItem(item.id)}
-                      />
-                    ))}
-                  </div>
+                  {showFishChooser ? (
+                    <FishSetupChooser onSelect={handleFishSubCategorySelect} />
+                  ) : (
+                    <div className="space-y-5">
+                      {activeProducts.map((product) => (
+                        <ProductChoiceCard
+                          key={product.id}
+                          product={product}
+                          quantity={getProductQuantity(product.id)}
+                          onAdd={handleAddProduct}
+                          onIncrease={(item) => incrementItem(item.id)}
+                          onDecrease={(item) => decrementItem(item.id)}
+                        />
+                      ))}
+                    </div>
+                  )}
                 </motion.section>
               </AnimatePresence>
 
@@ -415,6 +460,7 @@ export default function BuildPackage() {
                 total={total}
                 progress={{ ...progress, itemCount }}
                 customizations={customizations}
+                fishSubCategory={fishSubCategory}
                 onChangeCategory={(categoryId) => {
                   const index = displayCategories.findIndex(
                     (category) => category.id === categoryId,
