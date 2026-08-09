@@ -4,7 +4,7 @@ import { apiFetch } from '../lib/api'
 
 const FishProductContext = createContext(null)
 const STORAGE_KEY = 'db_fish_products_v1'
-const DELETED_FISH_IDS_KEY = 'db_deleted_fish_ids_v1'
+const DELETED_KEY = 'db_fish_products_deleted_v1'
 
 const safeParse = (raw, fallback) => {
   try {
@@ -14,36 +14,40 @@ const safeParse = (raw, fallback) => {
   }
 }
 
-function readDeletedFishIds() {
-  if (typeof window === 'undefined') return []
-  return safeParse(localStorage.getItem(DELETED_FISH_IDS_KEY), [])
+function readDeletedIds(): Set<string> {
+  if (typeof window === 'undefined') return new Set()
+  try {
+    const raw = localStorage.getItem(DELETED_KEY)
+    return raw ? new Set(JSON.parse(raw)) : new Set()
+  } catch { return new Set() }
 }
 
-function saveDeletedFishIds(ids) {
-  if (typeof window === 'undefined') return
-  try {
-    localStorage.setItem(DELETED_FISH_IDS_KEY, JSON.stringify(ids))
-  } catch {}
+function persistDeletedIds(ids: Set<string>) {
+  try { localStorage.setItem(DELETED_KEY, JSON.stringify([...ids])) } catch { /* */ }
+}
+
+function isDeleted(item: any, deletedIds: Set<string>): boolean {
+  if (!item) return true
+  if (item.id && deletedIds.has(item.id)) return true
+  if (item.name && deletedIds.has(item.name.trim().toLowerCase())) return true
+  return false
 }
 
 function readStoredFishProducts() {
   if (typeof window === 'undefined') return null
   const stored = safeParse(localStorage.getItem(STORAGE_KEY), null)
-  const deletedIds = readDeletedFishIds()
   if (Array.isArray(stored)) {
-    return stored
-      .filter((p) => !deletedIds.includes(String(p.id)) && !deletedIds.includes(String(p._id)))
-      .map((p) => {
-        const subCat = p.fishSubCategory || p.subCategory || 'aquatic-life'
-        if (subCat === 'aquatic-life' && !p.aquaticLifeType) {
-          return {
-            ...p,
-            aquaticLifeType: 'betta-fish',
-            tags: Array.from(new Set([...(p.tags || []), 'Betta Fish'])),
-          }
+    return stored.map((p) => {
+      const subCat = p.fishSubCategory || p.subCategory || 'aquatic-life'
+      if (subCat === 'aquatic-life' && !p.aquaticLifeType) {
+        return {
+          ...p,
+          aquaticLifeType: 'betta-fish',
+          tags: Array.from(new Set([...(p.tags || []), 'Betta Fish'])),
         }
-        return p
-      })
+      }
+      return p
+    })
   }
   return stored
 }
@@ -72,19 +76,19 @@ export function FishProductProvider({ children }) {
   const [fishProducts, setFishProducts] = useState(FISH_PRODUCT_SEED)
   const [isHydrated, setIsHydrated] = useState(false)
 
-  // Hydrate from localStorage on mount (client-side only)
+  // ── Hydrate from localStorage on mount (client-side only) ─────────
   useEffect(() => {
+    const deletedIds = readDeletedIds()
     const stored = readStoredFishProducts()
-    const deletedIds = readDeletedFishIds()
     if (stored && stored.length > 0) {
-      setFishProducts(stored)
-    } else if (deletedIds.length > 0) {
-      setFishProducts(FISH_PRODUCT_SEED.filter((p) => !deletedIds.includes(String(p.id))))
+      setFishProducts(stored.filter((p) => !isDeleted(p, deletedIds)))
+    } else {
+      setFishProducts(FISH_PRODUCT_SEED.filter((p) => !isDeleted(p, deletedIds)))
     }
     setIsHydrated(true)
   }, [])
 
-  // Fetch fish products from API on mount
+  // ── Fetch fish products from API on mount ─────────────────────────
   useEffect(() => {
     let cancelled = false
     async function fetchApiFishProducts() {
@@ -92,11 +96,9 @@ export function FishProductProvider({ children }) {
         const res = await apiFetch('/api/products?limit=100')
         const data = (res.data as any) || {}
         if (cancelled || !data.products?.length) return
-        const deletedIds = readDeletedFishIds()
-
+        const deletedIds = readDeletedIds()
         const apiFish = (data.products as any[])
           .filter((p) => {
-            if (deletedIds.includes(String(p._id)) || deletedIds.includes(String(p.id))) return false
             const cats = Array.isArray(p.category)
               ? p.category
               : Array.isArray(p.categories)
@@ -117,40 +119,20 @@ export function FishProductProvider({ children }) {
               : Array.isArray(p.categories)
               ? p.categories
               : [p.category].filter(Boolean)
-
             const subCat =
               p.fishSubCategory ||
               p.subCategory ||
-              cats.find((c: string) => typeof c === 'string' && (c.toLowerCase() === 'aquariums' || c.toLowerCase() === 'aquatic-life')) ||
+              cats.find((c) => c === 'aquariums' || c === 'aquatic-life') ||
               'aquatic-life'
-
-            // Robust case-insensitive aquaticLifeType matching
-            const rawType = p.aquaticLifeType || ''
-            let aquaticLifeType = 'betta-fish'
-            if (rawType) {
-              aquaticLifeType = rawType.toLowerCase().replace(/\s+/g, '-')
-            } else {
-              const foundCat = cats.find((c: string) =>
-                typeof c === 'string' && ['betta-fish', 'betta fish', 'shrimp', 'crab', 'pleco-fish', 'pleco fish'].includes(c.toLowerCase())
-              )
-              if (foundCat) {
-                aquaticLifeType = foundCat.toLowerCase().replace(/\s+/g, '-')
-              } else {
-                const foundTag = (p.tags || []).find((t: string) =>
-                  typeof t === 'string' && ['betta-fish', 'betta fish', 'shrimp', 'crab', 'pleco-fish', 'pleco fish'].includes(t.toLowerCase())
-                )
-                if (foundTag) {
-                  aquaticLifeType = foundTag.toLowerCase().replace(/\s+/g, '-')
-                }
-              }
-            }
-
+            const aquaticLifeType =
+              p.aquaticLifeType ||
+              cats.find((c) => ['betta-fish', 'shrimp', 'crab', 'pleco-fish'].includes(c)) ||
+              'betta-fish'
             const typeTag = AQUATIC_LIFE_LABEL_MAP[aquaticLifeType] || 'Betta Fish'
             const tags = Array.from(new Set([...(p.tags || []), typeTag]))
 
             return {
               id: p._id || p.id,
-              _id: p._id || p.id,
               name: p.name || '',
               price: Number(p.price) || 0,
               discountPrice: p.discountPrice ? Number(p.discountPrice) : null,
@@ -171,31 +153,28 @@ export function FishProductProvider({ children }) {
               _source: 'api',
             }
           })
+          // Filter out deleted products
+          .filter((item) => !isDeleted(item, deletedIds))
 
         if (apiFish.length > 0) {
           setFishProducts((prev) => {
             const map = new Map()
-            const currentDeleted = readDeletedFishIds()
-            // 1. Seed products
-            FISH_PRODUCT_SEED.forEach((item) => {
-              if (!currentDeleted.includes(String(item.id))) {
+            // 1. Seed products (skip deleted)
+            FISH_PRODUCT_SEED
+              .filter((item) => !isDeleted(item, deletedIds))
+              .forEach((item) => {
                 if (item?.name) map.set(item.name.trim().toLowerCase(), item)
                 else if (item?.id) map.set(item.id, item)
-              }
-            })
-            // 2. Local storage products
+              })
+            // 2. Local storage products (already filtered on hydration)
             prev.forEach((item) => {
-              if (!currentDeleted.includes(String(item.id)) && !currentDeleted.includes(String((item as any)._id))) {
-                if (item?.name) map.set(item.name.trim().toLowerCase(), item)
-                else if (item?.id) map.set(item.id, item)
-              }
+              if (item?.name) map.set(item.name.trim().toLowerCase(), item)
+              else if (item?.id) map.set(item.id, item)
             })
-            // 3. Server API products
+            // 3. Server API products (already filtered above)
             apiFish.forEach((item) => {
-              if (!currentDeleted.includes(String(item.id)) && !currentDeleted.includes(String((item as any)._id))) {
-                if (item?.name) map.set(item.name.trim().toLowerCase(), item)
-                else if (item?.id) map.set(item.id, item)
-              }
+              if (item?.name) map.set(item.name.trim().toLowerCase(), item)
+              else if (item?.id) map.set(item.id, item)
             })
             return Array.from(map.values())
           })
@@ -209,7 +188,7 @@ export function FishProductProvider({ children }) {
     return () => { cancelled = true }
   }, [])
 
-  // Persist to localStorage whenever products change AFTER initial hydration
+  // ── Persist to localStorage whenever products change AFTER hydration
   useEffect(() => {
     if (!isHydrated) return
     try {
@@ -260,6 +239,15 @@ export function FishProductProvider({ children }) {
       _source: 'admin-form',
     }
 
+    // Un-delete if the same name was previously deleted
+    const deletedIds = readDeletedIds()
+    const nameKey = product.name.trim().toLowerCase()
+    if (deletedIds.has(nameKey) || deletedIds.has(product.id)) {
+      deletedIds.delete(nameKey)
+      deletedIds.delete(product.id)
+      persistDeletedIds(deletedIds)
+    }
+
     setFishProducts((prev) => [product, ...prev])
 
     // Try posting to API so MongoDB backend persists it in live database too
@@ -273,11 +261,11 @@ export function FishProductProvider({ children }) {
           description: product.description,
           price: product.price,
           discountPrice: product.discountPrice,
-          category: ['fish', subCat, aquaticLifeType, typeTag, ...tags],
+          category: ['fish', subCat, aquaticLifeType, ...tags],
           subCategory: subCat,
+          packageCategory: 'fish',
           fishSubCategory: subCat,
           aquaticLifeType: aquaticLifeType,
-          packageCategory: 'fish',
           story: product.story,
           tags: product.tags,
           image: product.image,
@@ -329,22 +317,24 @@ export function FishProductProvider({ children }) {
     )
   }, [])
 
-  /** Remove a fish product persistently */
-  const removeFishProduct = useCallback(async (id) => {
-    const targetId = String(id)
-    const currentDeleted = readDeletedFishIds()
-    const updatedDeleted = Array.from(new Set([...currentDeleted, targetId]))
-    saveDeletedFishIds(updatedDeleted)
+  /** Remove a fish product */
+  const removeFishProduct = useCallback((id) => {
+    // Track which product is being deleted so we can persist the deletion
+    setFishProducts((prev) => {
+      const toDelete = prev.find((p) => p.id === id)
+      if (toDelete) {
+        const deletedIds = readDeletedIds()
+        deletedIds.add(id)
+        if (toDelete.name) deletedIds.add(toDelete.name.trim().toLowerCase())
+        persistDeletedIds(deletedIds)
+      }
+      return prev.filter((p) => p.id !== id)
+    })
 
-    setFishProducts((prev) =>
-      prev.filter((p) => String(p.id) !== targetId && String((p as any)._id) !== targetId)
-    )
-
+    // Also try to delete from MongoDB API
     try {
-      await apiFetch(`/api/products/${id}`, { method: 'DELETE' })
-    } catch (e) {
-      console.warn('API delete failed, product removed locally:', e)
-    }
+      apiFetch(`/api/products/${id}`, { method: 'DELETE' }).catch(() => { /* best-effort */ })
+    } catch { /* best-effort */ }
   }, [])
 
   /** Get fish products by sub-category & optional aquatic life type filter */
