@@ -143,36 +143,38 @@ export function ProductProvider({ children }) {
     }))
   }, [fishProducts])
 
-  // Catalog products (SEED packages + API DB packages + custom packages + fish products)
+  // Catalog products (SEED packages + API DB packages + custom packages)
+  // NOTE: Fish products are intentionally EXCLUDED from this catalog.
+  // They only appear in the Build Package flow (/build-your-package).
   const products = useMemo(() => {
     const map = new Map()
     // 1. Initial SEED packages (guarantees store is never empty!)
     SEED.forEach((p) => {
       const norm = normalizeProduct(p)
+      // Skip fish products — they belong in the builder, not the catalog
+      if (norm?.category === 'fish' || norm?.packageCategory === 'fish') return
       if (norm?.name) map.set(norm.name.trim().toLowerCase(), norm)
       else if (norm?.id) map.set(norm.id, norm)
     })
-    // 2. Base API products from DB
+    // 2. Base API products from DB (filter out fish products)
     baseProducts.forEach((p) => {
       const norm = normalizeProduct(p)
+      if (norm?.category === 'fish' || norm?.packageCategory === 'fish') return
+      const cats = norm?.categories || []
+      if (cats.includes('fish') || cats.includes('aquariums') || cats.includes('aquatic-life')) return
+      if (norm?.fishSubCategory) return
       if (norm?.name) map.set(norm.name.trim().toLowerCase(), norm)
       else if (norm?.id) map.set(norm.id, norm)
     })
-    // 3. Custom added packages
+    // 3. Custom added packages (filter out fish products)
     customProducts.forEach((p) => {
       const norm = normalizeProduct(p)
+      if (norm?.category === 'fish' || norm?.packageCategory === 'fish') return
       if (norm?.name) map.set(norm.name.trim().toLowerCase(), norm)
       else if (norm?.id) map.set(norm.id, norm)
     })
-    // 4. Fish products from admin fish management
-    formattedFishProducts.forEach((p) => {
-      if (p.isActive !== false) {
-        if (p?.name) map.set(p.name.trim().toLowerCase(), p)
-        else if (p?.id) map.set(p.id, p)
-      }
-    })
     return Array.from(map.values())
-  }, [baseProducts, customProducts, formattedFishProducts])
+  }, [baseProducts, customProducts])
 
   /* ── CRUD helpers ──────────────────────────────────────────────────── */
 
