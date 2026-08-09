@@ -4,7 +4,6 @@ import { apiFetch } from '../lib/api'
 
 const FishProductContext = createContext(null)
 const STORAGE_KEY = 'db_fish_products_v1'
-const DELETED_KEY = 'db_fish_products_deleted_v1'
 
 const safeParse = (raw, fallback) => {
   try {
@@ -12,25 +11,6 @@ const safeParse = (raw, fallback) => {
   } catch {
     return fallback
   }
-}
-
-function readDeletedIds(): Set<string> {
-  if (typeof window === 'undefined') return new Set()
-  try {
-    const raw = localStorage.getItem(DELETED_KEY)
-    return raw ? new Set(JSON.parse(raw)) : new Set()
-  } catch { return new Set() }
-}
-
-function persistDeletedIds(ids: Set<string>) {
-  try { localStorage.setItem(DELETED_KEY, JSON.stringify([...ids])) } catch { /* */ }
-}
-
-function isDeleted(item: any, deletedIds: Set<string>): boolean {
-  if (!item) return true
-  if (item.id && deletedIds.has(item.id)) return true
-  if (item.name && deletedIds.has(item.name.trim().toLowerCase())) return true
-  return false
 }
 
 function readStoredFishProducts() {
@@ -72,23 +52,85 @@ const AQUATIC_LIFE_LABEL_MAP = {
   'pleco-fish': 'Pleco Fish',
 }
 
+/** Normalize an API product into the standard fish-product shape */
+function normalizeApiProduct(p: any) {
+  const cats = Array.isArray(p.category)
+    ? p.category
+    : Array.isArray(p.categories)
+    ? p.categories
+    : [p.category].filter(Boolean)
+  const subCat =
+    p.fishSubCategory ||
+    p.subCategory ||
+    cats.find((c) => c === 'aquariums' || c === 'aquatic-life') ||
+    'aquatic-life'
+  const aquaticLifeType =
+    p.aquaticLifeType ||
+    cats.find((c) => ['betta-fish', 'shrimp', 'crab', 'pleco-fish'].includes(c)) ||
+    'betta-fish'
+  const typeTag = AQUATIC_LIFE_LABEL_MAP[aquaticLifeType] || 'Betta Fish'
+  const tags = Array.from(new Set([...(p.tags || []), typeTag]))
+
+  return {
+    id: p._id || p.id,
+    _mongoId: p._id || null,
+    name: p.name || '',
+    price: Number(p.price) || 0,
+    discountPrice: p.discountPrice ? Number(p.discountPrice) : null,
+    description: p.description || '',
+    shortDescription: p.shortDescription || p.tagline || '',
+    image: p.image || p.thumbnail || '/assets/fishs.jpeg',
+    gallery: p.gallery || [],
+    category: 'fish',
+    categories: ['fish', subCat, aquaticLifeType, typeTag, ...tags],
+    subCategory: subCat,
+    fishSubCategory: subCat,
+    aquaticLifeType,
+    story: p.story || '',
+    tags,
+    status: p.status || 'active',
+    isActive: p.isActive !== false,
+    _createdAt: p.createdAt || new Date().toISOString(),
+    _source: 'api',
+  }
+}
+
+/** Check if a product is a fish product */
+function isFishProduct(p: any): boolean {
+  const cats = Array.isArray(p.category)
+    ? p.category
+    : Array.isArray(p.categories)
+    ? p.categories
+    : [p.category].filter(Boolean)
+  return (
+    p.packageCategory === 'fish' ||
+    p.category === 'fish' ||
+    cats.includes('fish') ||
+    cats.includes('aquariums') ||
+    cats.includes('aquatic-life') ||
+    !!p.fishSubCategory
+  )
+}
+
 export function FishProductProvider({ children }) {
   const [fishProducts, setFishProducts] = useState(FISH_PRODUCT_SEED)
   const [isHydrated, setIsHydrated] = useState(false)
+  const [apiFetched, setApiFetched] = useState(false)
 
   // ── Hydrate from localStorage on mount (client-side only) ─────────
   useEffect(() => {
-    const deletedIds = readDeletedIds()
     const stored = readStoredFishProducts()
     if (stored && stored.length > 0) {
-      setFishProducts(stored.filter((p) => !isDeleted(p, deletedIds)))
-    } else {
-      setFishProducts(FISH_PRODUCT_SEED.filter((p) => !isDeleted(p, deletedIds)))
+      setFishProducts(stored)
     }
     setIsHydrated(true)
   }, [])
 
   // ── Fetch fish products from API on mount ─────────────────────────
+  // The API (MongoDB) is the SOURCE OF TRUTH.
+  // Whatever is in the DB is what should be shown — if the admin deleted
+  // a product, it won't be in the API response (isActive = false).
+  // If the admin added a product, it WILL be in the API response.
   useEffect(() => {
     let cancelled = false
     async function fetchApiFishProducts() {
@@ -96,89 +138,41 @@ export function FishProductProvider({ children }) {
         const res = await apiFetch('/api/products?limit=100')
         const data = (res.data as any) || {}
         if (cancelled || !data.products?.length) return
-        const deletedIds = readDeletedIds()
+
         const apiFish = (data.products as any[])
-          .filter((p) => {
-            const cats = Array.isArray(p.category)
-              ? p.category
-              : Array.isArray(p.categories)
-              ? p.categories
-              : [p.category].filter(Boolean)
-            return (
-              p.packageCategory === 'fish' ||
-              p.category === 'fish' ||
-              cats.includes('fish') ||
-              cats.includes('aquariums') ||
-              cats.includes('aquatic-life') ||
-              !!p.fishSubCategory
-            )
-          })
-          .map((p) => {
-            const cats = Array.isArray(p.category)
-              ? p.category
-              : Array.isArray(p.categories)
-              ? p.categories
-              : [p.category].filter(Boolean)
-            const subCat =
-              p.fishSubCategory ||
-              p.subCategory ||
-              cats.find((c) => c === 'aquariums' || c === 'aquatic-life') ||
-              'aquatic-life'
-            const aquaticLifeType =
-              p.aquaticLifeType ||
-              cats.find((c) => ['betta-fish', 'shrimp', 'crab', 'pleco-fish'].includes(c)) ||
-              'betta-fish'
-            const typeTag = AQUATIC_LIFE_LABEL_MAP[aquaticLifeType] || 'Betta Fish'
-            const tags = Array.from(new Set([...(p.tags || []), typeTag]))
+          .filter(isFishProduct)
+          .map(normalizeApiProduct)
 
-            return {
-              id: p._id || p.id,
-              name: p.name || '',
-              price: Number(p.price) || 0,
-              discountPrice: p.discountPrice ? Number(p.discountPrice) : null,
-              description: p.description || '',
-              shortDescription: p.shortDescription || p.tagline || '',
-              image: p.image || p.thumbnail || '/assets/fishs.jpeg',
-              gallery: p.gallery || [],
-              category: 'fish',
-              categories: ['fish', subCat, aquaticLifeType, typeTag, ...tags],
-              subCategory: subCat,
-              fishSubCategory: subCat,
-              aquaticLifeType,
-              story: p.story || '',
-              tags,
-              status: p.status || 'active',
-              isActive: p.isActive !== false,
-              _createdAt: p.createdAt || new Date().toISOString(),
-              _source: 'api',
-            }
-          })
-          // Filter out deleted products
-          .filter((item) => !isDeleted(item, deletedIds))
+        // Build final product list:
+        // API products are the source of truth.
+        // Seed products are ONLY included if they don't conflict with API data.
+        // Local-only products (not yet synced) are kept too.
+        setFishProducts((prev) => {
+          const map = new Map<string, any>()
 
-        if (apiFish.length > 0) {
-          setFishProducts((prev) => {
-            const map = new Map()
-            // 1. Seed products (skip deleted)
-            FISH_PRODUCT_SEED
-              .filter((item) => !isDeleted(item, deletedIds))
-              .forEach((item) => {
-                if (item?.name) map.set(item.name.trim().toLowerCase(), item)
-                else if (item?.id) map.set(item.id, item)
-              })
-            // 2. Local storage products (already filtered on hydration)
-            prev.forEach((item) => {
-              if (item?.name) map.set(item.name.trim().toLowerCase(), item)
-              else if (item?.id) map.set(item.id, item)
-            })
-            // 3. Server API products (already filtered above)
-            apiFish.forEach((item) => {
-              if (item?.name) map.set(item.name.trim().toLowerCase(), item)
-              else if (item?.id) map.set(item.id, item)
-            })
-            return Array.from(map.values())
+          // 1. API products first (source of truth — keyed by name)
+          apiFish.forEach((item) => {
+            const key = item.name?.trim().toLowerCase()
+            if (key) map.set(key, item)
           })
-        }
+
+          // 2. Seed products only if NOT already in API (avoids duplicates)
+          FISH_PRODUCT_SEED.forEach((item) => {
+            const key = item.name?.trim().toLowerCase()
+            if (key && !map.has(key)) map.set(key, item)
+          })
+
+          // 3. Local-only admin products (source = 'admin-form', not yet in API)
+          prev
+            .filter((item) => (item as any)._source === 'admin-form')
+            .forEach((item) => {
+              const key = item.name?.trim().toLowerCase()
+              if (key && !map.has(key)) map.set(key, item)
+            })
+
+          return Array.from(map.values())
+        })
+        setApiFetched(true)
       } catch (err) {
         console.warn('FishProductContext: Failed to fetch API fish products.', err)
       }
@@ -209,7 +203,7 @@ export function FishProductProvider({ children }) {
     const typeTag = AQUATIC_LIFE_LABEL_MAP[aquaticLifeType] || 'Betta Fish'
     const tags = Array.from(new Set([...(rawForm.tags || []), typeTag]))
 
-    const id =
+    const localId =
       (rawForm.name || 'fish-product')
         .toLowerCase()
         .replace(/[^a-z0-9]+/g, '-')
@@ -218,7 +212,8 @@ export function FishProductProvider({ children }) {
       Date.now()
 
     const product = {
-      id,
+      id: localId,
+      _mongoId: null as string | null,
       name: rawForm.name || '',
       price: Number(rawForm.price) || 0,
       discountPrice: rawForm.discountPrice ? Number(rawForm.discountPrice) : null,
@@ -239,20 +234,12 @@ export function FishProductProvider({ children }) {
       _source: 'admin-form',
     }
 
-    // Un-delete if the same name was previously deleted
-    const deletedIds = readDeletedIds()
-    const nameKey = product.name.trim().toLowerCase()
-    if (deletedIds.has(nameKey) || deletedIds.has(product.id)) {
-      deletedIds.delete(nameKey)
-      deletedIds.delete(product.id)
-      persistDeletedIds(deletedIds)
-    }
-
+    // Add to state immediately for instant UI feedback
     setFishProducts((prev) => [product, ...prev])
 
-    // Try posting to API so MongoDB backend persists it in live database too
+    // Post to API and capture the MongoDB _id from the response
     try {
-      await apiFetch('/api/products', {
+      const apiRes = await apiFetch('/api/products', {
         method: 'POST',
         body: JSON.stringify({
           name: product.name,
@@ -273,6 +260,20 @@ export function FishProductProvider({ children }) {
           isActive: product.isActive,
         }),
       })
+
+      // Update the local product with the MongoDB _id so delete works later
+      const created = (apiRes.data as any)
+      if (created?._id) {
+        setFishProducts((prev) =>
+          prev.map((p) =>
+            p.id === localId
+              ? { ...p, id: created._id, _mongoId: created._id, _source: 'api' }
+              : p
+          )
+        )
+        product.id = created._id
+        product._mongoId = created._id
+      }
     } catch (e) {
       console.warn('API sync failed, saved locally:', e)
     }
@@ -315,26 +316,59 @@ export function FishProductProvider({ children }) {
         }
       })
     )
+
+    // Also update in MongoDB if we have the mongo ID
+    try {
+      apiFetch(`/api/products/${id}`, {
+        method: 'PUT',
+        body: JSON.stringify({
+          name: rawForm.name,
+          price: Number(rawForm.price) || 0,
+          discountPrice: rawForm.discountPrice ? Number(rawForm.discountPrice) : null,
+          description: rawForm.description,
+          shortDescription: rawForm.shortDescription,
+          fishSubCategory: subCat,
+          aquaticLifeType: aquaticLifeType,
+          tags: rawForm.tags,
+          story: rawForm.story,
+          image: images[0] || undefined,
+          gallery: images.length > 1 ? images.slice(1) : undefined,
+          status: rawForm.status || 'active',
+        }),
+      }).catch(() => { /* best-effort */ })
+    } catch { /* best-effort */ }
   }, [])
 
   /** Remove a fish product */
   const removeFishProduct = useCallback((id) => {
-    // Track which product is being deleted so we can persist the deletion
+    // Find the product to get its _mongoId and name
+    let mongoId = id
+    let productName = ''
     setFishProducts((prev) => {
       const toDelete = prev.find((p) => p.id === id)
       if (toDelete) {
-        const deletedIds = readDeletedIds()
-        deletedIds.add(id)
-        if (toDelete.name) deletedIds.add(toDelete.name.trim().toLowerCase())
-        persistDeletedIds(deletedIds)
+        mongoId = (toDelete as any)._mongoId || toDelete.id
+        productName = toDelete.name || ''
       }
       return prev.filter((p) => p.id !== id)
     })
 
-    // Also try to delete from MongoDB API
-    try {
-      apiFetch(`/api/products/${id}`, { method: 'DELETE' }).catch(() => { /* best-effort */ })
-    } catch { /* best-effort */ }
+    // Delete from MongoDB using the correct MongoDB _id
+    // Try the mongoId first, then try by slug name
+    const tryDelete = async () => {
+      try {
+        await apiFetch(`/api/products/${mongoId}`, { method: 'DELETE' })
+      } catch {
+        // If that failed, try to find and delete by name
+        if (productName) {
+          try {
+            const slug = productName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '')
+            await apiFetch(`/api/products/${slug}`, { method: 'DELETE' })
+          } catch { /* best-effort */ }
+        }
+      }
+    }
+    tryDelete()
   }, [])
 
   /** Get fish products by sub-category & optional aquatic life type filter */
