@@ -40,12 +40,27 @@ function readStoredCustomProducts() {
  */
 function normalizeProduct(p) {
   if (!p) return p
+  const cats = Array.isArray(p.category)
+    ? p.category
+    : Array.isArray(p.categories)
+    ? p.categories
+    : [p.category].filter(Boolean)
+
+  const fishSub =
+    p.fishSubCategory ||
+    p.subCategory ||
+    cats.find((c) => c === 'aquariums' || c === 'aquatic-life') ||
+    (cats.includes('fish') ? 'aquatic-life' : null)
+
   return {
     ...p,
     id: p._id || p.id || p.slug,
-    categories: p.category || p.categories || [],
+    category: p.category || (cats.includes('fish') ? 'fish' : 'calm'),
+    categories: cats,
+    fishSubCategory: fishSub,
+    subCategory: fishSub || p.subCategory || '',
     reviews: p.reviewsCount ?? p.reviews ?? 0,
-    bestSeller: p.bestSeller || (p.category || []).includes(BEST_SELLER_CATEGORY_ID),
+    bestSeller: p.bestSeller || cats.includes(BEST_SELLER_CATEGORY_ID),
   }
 }
 

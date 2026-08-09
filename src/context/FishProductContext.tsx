@@ -1,16 +1,6 @@
-// @ts-nocheck
-"use client"
-
-/**
- * FishProductContext
- * ─────────────────────────────────────────────────────────────────────────────
- * Manages fish builder products (Aquariums / Aquatic Life) for the package
- * builder. Initializes from seed data and persists admin additions to
- * localStorage so they survive page refreshes.
- */
-
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react'
 import { FISH_PRODUCT_SEED } from '../data/products'
+import { apiFetch } from '../lib/api'
 
 const FishProductContext = createContext(null)
 const STORAGE_KEY = 'db_fish_products_v1'
@@ -28,6 +18,19 @@ function readStoredFishProducts() {
   return safeParse(localStorage.getItem(STORAGE_KEY), null)
 }
 
+function matchesFishSubCategory(product, subCategoryId) {
+  if (!product) return false
+  if (product.status === 'draft' || product.isActive === false) return false
+  const fishSub = product.fishSubCategory || product.subCategory
+  if (fishSub === subCategoryId) return true
+  const cats = Array.isArray(product.categories)
+    ? product.categories
+    : Array.isArray(product.category)
+    ? product.category
+    : [product.category].filter(Boolean)
+  return cats.includes(subCategoryId)
+}
+
 export function FishProductProvider({ children }) {
   const [fishProducts, setFishProducts] = useState(FISH_PRODUCT_SEED)
   const [isHydrated, setIsHydrated] = useState(false)
@@ -35,7 +38,7 @@ export function FishProductProvider({ children }) {
   // Hydrate from localStorage on mount (client-side only)
   useEffect(() => {
     const stored = readStoredFishProducts()
-    if (stored) {
+    if (stored && stored.length > 0) {
       setFishProducts(stored)
     }
     setIsHydrated(true)
@@ -52,7 +55,13 @@ export function FishProductProvider({ children }) {
   }, [fishProducts, isHydrated])
 
   /** Add a new fish product */
-  const addFishProduct = useCallback((rawForm) => {
+  const addFishProduct = useCallback(async (rawForm) => {
+    const images = rawForm.images?.length
+      ? rawForm.images.map((img) => img.preview || img.url || img)
+      : []
+
+    const subCat = rawForm.fishSubCategory || 'aquatic-life'
+
     const id =
       (rawForm.name || 'fish-product')
         .toLowerCase()
@@ -60,10 +69,6 @@ export function FishProductProvider({ children }) {
         .replace(/(^-|-$)/g, '') +
       '-' +
       Date.now()
-
-    const images = rawForm.images?.length
-      ? rawForm.images.map((img) => img.preview || img.url || img)
-      : []
 
     const product = {
       id,
@@ -75,15 +80,44 @@ export function FishProductProvider({ children }) {
       image: images[0] || '/assets/fishs.jpeg',
       gallery: images.slice(1),
       category: 'fish',
-      fishSubCategory: rawForm.fishSubCategory || 'aquatic-life',
+      categories: ['fish', subCat, ...(rawForm.tags || [])],
+      subCategory: subCat,
+      fishSubCategory: subCat,
       story: rawForm.story || '',
       tags: rawForm.tags || [],
       status: rawForm.status || 'active',
+      isActive: rawForm.status !== 'draft' && rawForm.status !== 'out_of_stock',
       _createdAt: new Date().toISOString(),
       _source: 'admin-form',
     }
 
     setFishProducts((prev) => [product, ...prev])
+
+    // Try posting to API so MongoDB backend persists it in live database too
+    try {
+      await apiFetch('/api/products', {
+        method: 'POST',
+        body: JSON.stringify({
+          name: product.name,
+          tagline: product.shortDescription || product.name,
+          shortDescription: product.shortDescription,
+          description: product.description,
+          price: product.price,
+          discountPrice: product.discountPrice,
+          category: ['fish', subCat, ...(product.tags || [])],
+          subCategory: subCat,
+          packageCategory: 'fish',
+          story: product.story,
+          tags: product.tags,
+          image: product.image,
+          gallery: product.gallery,
+          isActive: product.isActive,
+        }),
+      })
+    } catch (e) {
+      console.warn('API sync failed, saved locally:', e)
+    }
+
     return product
   }, [])
 
@@ -92,6 +126,8 @@ export function FishProductProvider({ children }) {
     const images = rawForm.images?.length
       ? rawForm.images.map((img) => img.preview || img.url || img)
       : []
+
+    const subCat = rawForm.fishSubCategory || 'aquatic-life'
 
     setFishProducts((prev) =>
       prev.map((p) =>
@@ -105,10 +141,13 @@ export function FishProductProvider({ children }) {
               shortDescription: rawForm.shortDescription ?? p.shortDescription,
               image: images[0] || p.image,
               gallery: images.length > 1 ? images.slice(1) : p.gallery,
-              fishSubCategory: rawForm.fishSubCategory || p.fishSubCategory,
+              subCategory: subCat,
+              fishSubCategory: subCat,
+              categories: ['fish', subCat, ...(rawForm.tags || p.tags || [])],
               story: rawForm.story ?? p.story,
               tags: rawForm.tags || p.tags,
               status: rawForm.status || p.status,
+              isActive: (rawForm.status || p.status) !== 'draft' && (rawForm.status || p.status) !== 'out_of_stock',
             }
           : p
       )
@@ -123,9 +162,7 @@ export function FishProductProvider({ children }) {
   /** Get fish products by sub-category */
   const getFishProductsBySubCategory = useCallback(
     (subCategoryId) =>
-      fishProducts.filter(
-        (p) => p.fishSubCategory === subCategoryId && p.status !== 'draft'
-      ),
+      fishProducts.filter((p) => matchesFishSubCategory(p, subCategoryId)),
     [fishProducts]
   )
 
