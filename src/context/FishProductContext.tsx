@@ -140,14 +140,14 @@ export function FishProductProvider({ children }) {
               description: rawForm.description ?? p.description,
               shortDescription: rawForm.shortDescription ?? p.shortDescription,
               image: images[0] || p.image,
-              gallery: images.length > 1 ? images.slice(1) : p.gallery,
+              gallery: images.length > 1 ? images.slice(1) : ((p as any).gallery || []),
               subCategory: subCat,
               fishSubCategory: subCat,
               categories: ['fish', subCat, ...(rawForm.tags || p.tags || [])],
               story: rawForm.story ?? p.story,
               tags: rawForm.tags || p.tags,
-              status: rawForm.status || p.status,
-              isActive: (rawForm.status || p.status) !== 'draft' && (rawForm.status || p.status) !== 'out_of_stock',
+              status: rawForm.status || (p as any).status || 'active',
+              isActive: (rawForm.status || (p as any).status || 'active') !== 'draft' && (rawForm.status || (p as any).status || 'active') !== 'out_of_stock',
             }
           : p
       )
