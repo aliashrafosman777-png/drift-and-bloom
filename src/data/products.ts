@@ -61,7 +61,13 @@ export const isBestSellerProduct = (product) =>
   );
 
 export const packageFilterOptions = [
+  { id: "all", label: "All Packages" },
   { id: BEST_SELLER_CATEGORY_ID, label: "⭐ Best Sellers" },
+  { id: "calm", label: "Calm" },
+  { id: "gifting", label: "Gifting" },
+  { id: "love", label: "Love" },
+  { id: "self-care", label: "Self-Care" },
+  { id: "new-beginnings", label: "New Beginnings" },
 ];
 
 export const categories = [

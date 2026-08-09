@@ -65,6 +65,101 @@ export function FishProductProvider({ children }) {
     setIsHydrated(true)
   }, [])
 
+  // Fetch fish products from API on mount
+  useEffect(() => {
+    let cancelled = false
+    async function fetchApiFishProducts() {
+      try {
+        const res = await apiFetch('/api/products?limit=100')
+        const data = (res.data as any) || {}
+        if (cancelled || !data.products?.length) return
+        const apiFish = (data.products as any[])
+          .filter((p) => {
+            const cats = Array.isArray(p.category)
+              ? p.category
+              : Array.isArray(p.categories)
+              ? p.categories
+              : [p.category].filter(Boolean)
+            return (
+              p.packageCategory === 'fish' ||
+              p.category === 'fish' ||
+              cats.includes('fish') ||
+              cats.includes('aquariums') ||
+              cats.includes('aquatic-life') ||
+              !!p.fishSubCategory
+            )
+          })
+          .map((p) => {
+            const cats = Array.isArray(p.category)
+              ? p.category
+              : Array.isArray(p.categories)
+              ? p.categories
+              : [p.category].filter(Boolean)
+            const subCat =
+              p.fishSubCategory ||
+              p.subCategory ||
+              cats.find((c) => c === 'aquariums' || c === 'aquatic-life') ||
+              'aquatic-life'
+            const aquaticLifeType =
+              p.aquaticLifeType ||
+              cats.find((c) => ['betta-fish', 'shrimp', 'crab', 'pleco-fish'].includes(c)) ||
+              'betta-fish'
+            const typeTag = AQUATIC_LIFE_LABEL_MAP[aquaticLifeType] || 'Betta Fish'
+            const tags = Array.from(new Set([...(p.tags || []), typeTag]))
+
+            return {
+              id: p._id || p.id,
+              name: p.name || '',
+              price: Number(p.price) || 0,
+              discountPrice: p.discountPrice ? Number(p.discountPrice) : null,
+              description: p.description || '',
+              shortDescription: p.shortDescription || p.tagline || '',
+              image: p.image || p.thumbnail || '/assets/fishs.jpeg',
+              gallery: p.gallery || [],
+              category: 'fish',
+              categories: ['fish', subCat, aquaticLifeType, typeTag, ...tags],
+              subCategory: subCat,
+              fishSubCategory: subCat,
+              aquaticLifeType,
+              story: p.story || '',
+              tags,
+              status: p.status || 'active',
+              isActive: p.isActive !== false,
+              _createdAt: p.createdAt || new Date().toISOString(),
+              _source: 'api',
+            }
+          })
+
+        if (apiFish.length > 0) {
+          setFishProducts((prev) => {
+            const map = new Map()
+            // 1. Seed products
+            FISH_PRODUCT_SEED.forEach((item) => {
+              if (item?.name) map.set(item.name.trim().toLowerCase(), item)
+              else if (item?.id) map.set(item.id, item)
+            })
+            // 2. Local storage products
+            prev.forEach((item) => {
+              if (item?.name) map.set(item.name.trim().toLowerCase(), item)
+              else if (item?.id) map.set(item.id, item)
+            })
+            // 3. Server API products
+            apiFish.forEach((item) => {
+              if (item?.name) map.set(item.name.trim().toLowerCase(), item)
+              else if (item?.id) map.set(item.id, item)
+            })
+            return Array.from(map.values())
+          })
+        }
+      } catch (err) {
+        console.warn('FishProductContext: Failed to fetch API fish products.', err)
+      }
+    }
+
+    fetchApiFishProducts()
+    return () => { cancelled = true }
+  }, [])
+
   // Persist to localStorage whenever products change AFTER initial hydration
   useEffect(() => {
     if (!isHydrated) return

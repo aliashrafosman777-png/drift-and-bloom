@@ -14,6 +14,7 @@
 import React, { createContext, useContext, useEffect, useMemo, useState, useCallback } from 'react'
 import { apiFetch } from '../lib/api'
 import { BEST_SELLER_CATEGORY_ID, products as SEED } from '../data/products'
+import { useFishProducts } from './FishProductContext'
 
 const packageFallbackImage = "/assets/package.png"
 const CUSTOM_PRODUCTS_STORAGE_KEY = 'db_custom_products_v1'
@@ -70,6 +71,10 @@ export function ProductProvider({ children }) {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
 
+  // Safely consume FishProductContext if available
+  const fishCtx = useFishProducts()
+  const fishProducts = fishCtx?.fishProducts || []
+
   // Hydrate customProducts from localStorage on mount (client-side only)
   useEffect(() => {
     const stored = readStoredCustomProducts()
@@ -111,15 +116,63 @@ export function ProductProvider({ children }) {
     return () => { cancelled = true }
   }, [])
 
-  // Catalog products (seed packages + custom packages added via Admin Packages)
+  // Format fish products into store-compatible product objects
+  const formattedFishProducts = useMemo(() => {
+    return (fishProducts || []).map((fp) => ({
+      id: fp.id,
+      _id: fp.id,
+      name: fp.name,
+      tagline: fp.shortDescription || fp.tagline || 'Aquatic setup package',
+      shortDescription: fp.shortDescription || fp.tagline || '',
+      description: fp.description || fp.shortDescription || '',
+      story: fp.story || '',
+      price: Number(fp.price) || 0,
+      discountPrice: fp.discountPrice ? Number(fp.discountPrice) : null,
+      rating: Number(fp.rating) || 5.0,
+      reviews: Number(fp.reviews) || 0,
+      image: fp.image || '/assets/fishs.jpeg',
+      gallery: fp.gallery?.length ? fp.gallery : [fp.image || '/assets/fishs.jpeg'],
+      category: 'fish',
+      categories: ['fish', fp.fishSubCategory || fp.subCategory, fp.aquaticLifeType, ...(fp.tags || [])].filter(Boolean),
+      fishSubCategory: fp.fishSubCategory || fp.subCategory,
+      aquaticLifeType: fp.aquaticLifeType,
+      tags: fp.tags || [],
+      scent: 'Botanical Water & Living Aquaria',
+      status: fp.status || 'active',
+      isActive: fp.status !== 'draft' && fp.status !== 'out_of_stock',
+    }))
+  }, [fishProducts])
+
+  // Catalog products (SEED packages + API DB packages + custom packages + fish products)
   const products = useMemo(() => {
     const map = new Map()
-    // 1. Base seed/API products
-    baseProducts.forEach((p) => map.set(p.id || p._id, p))
-    // 2. Custom added packages
-    customProducts.forEach((p) => map.set(p.id || p._id, p))
+    // 1. Initial SEED packages (guarantees store is never empty!)
+    SEED.forEach((p) => {
+      const norm = normalizeProduct(p)
+      if (norm?.name) map.set(norm.name.trim().toLowerCase(), norm)
+      else if (norm?.id) map.set(norm.id, norm)
+    })
+    // 2. Base API products from DB
+    baseProducts.forEach((p) => {
+      const norm = normalizeProduct(p)
+      if (norm?.name) map.set(norm.name.trim().toLowerCase(), norm)
+      else if (norm?.id) map.set(norm.id, norm)
+    })
+    // 3. Custom added packages
+    customProducts.forEach((p) => {
+      const norm = normalizeProduct(p)
+      if (norm?.name) map.set(norm.name.trim().toLowerCase(), norm)
+      else if (norm?.id) map.set(norm.id, norm)
+    })
+    // 4. Fish products from admin fish management
+    formattedFishProducts.forEach((p) => {
+      if (p.isActive !== false) {
+        if (p?.name) map.set(p.name.trim().toLowerCase(), p)
+        else if (p?.id) map.set(p.id, p)
+      }
+    })
     return Array.from(map.values())
-  }, [baseProducts, customProducts])
+  }, [baseProducts, customProducts, formattedFishProducts])
 
   /* ── CRUD helpers ──────────────────────────────────────────────────── */
 
