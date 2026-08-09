@@ -153,15 +153,16 @@ export default function BuildPackage() {
   const activeCategory = displayCategories[activeIndex];
   const isFishCategory = activeCategory.id === "fish";
   const showFishChooser = isFishCategory && fishSubCategory === null;
+  const [aquaticLifeFilter, setAquaticLifeFilter] = useState("all");
   const { getFishProductsBySubCategory } = useFishProducts();
   const activeProducts = useMemo(
     () => {
       if (isFishCategory && fishSubCategory) {
-        return getFishProductsBySubCategory(fishSubCategory);
+        return getFishProductsBySubCategory(fishSubCategory, aquaticLifeFilter);
       }
       return packageBuilderProductsByCategory[activeCategory.id] || [];
     },
-    [activeCategory.id, isFishCategory, fishSubCategory, getFishProductsBySubCategory],
+    [activeCategory.id, isFishCategory, fishSubCategory, aquaticLifeFilter, getFishProductsBySubCategory],
   );
   const total = getTotal();
   const progress = getProgress();
@@ -429,16 +430,49 @@ export default function BuildPackage() {
                     <FishSetupChooser onSelect={handleFishSubCategorySelect} />
                   ) : (
                     <div className="space-y-5">
-                      {activeProducts.map((product) => (
-                        <ProductChoiceCard
-                          key={product.id}
-                          product={product}
-                          quantity={getProductQuantity(product.id)}
-                          onAdd={handleAddProduct}
-                          onIncrease={(item) => incrementItem(item.id)}
-                          onDecrease={(item) => decrementItem(item.id)}
-                        />
-                      ))}
+                      {isFishCategory && fishSubCategory === 'aquatic-life' && (
+                        <div className="flex items-center gap-2 overflow-x-auto no-scrollbar pb-1 mb-2">
+                          {[
+                            { id: 'all', label: 'All Aquatic Life' },
+                            { id: 'betta-fish', label: 'Betta Fish' },
+                            { id: 'shrimp', label: 'Shrimp' },
+                            { id: 'crab', label: 'Crab' },
+                            { id: 'pleco-fish', label: 'Pleco Fish' },
+                          ].map((tab) => {
+                            const active = aquaticLifeFilter === tab.id
+                            return (
+                              <button
+                                key={tab.id}
+                                type="button"
+                                onClick={() => setAquaticLifeFilter(tab.id)}
+                                className={`shrink-0 px-4 py-2 rounded-full text-xs font-medium border transition duration-200 ${
+                                  active
+                                    ? 'bg-olive text-cream border-olive shadow-soft'
+                                    : 'bg-white/80 text-charcoal/70 border-charcoal/15 hover:border-gold/50'
+                                }`}
+                              >
+                                {tab.label}
+                              </button>
+                            )
+                          })}
+                        </div>
+                      )}
+                      {activeProducts.length === 0 ? (
+                        <div className="text-center py-12 rounded-2xl border border-charcoal/10 bg-white/60">
+                          <p className="text-sm text-charcoal/60">No products found for this aquatic life category.</p>
+                        </div>
+                      ) : (
+                        activeProducts.map((product) => (
+                          <ProductChoiceCard
+                            key={product.id}
+                            product={product}
+                            quantity={getProductQuantity(product.id)}
+                            onAdd={handleAddProduct}
+                            onIncrease={(item) => incrementItem(item.id)}
+                            onDecrease={(item) => decrementItem(item.id)}
+                          />
+                        ))
+                      )}
                     </div>
                   )}
                 </motion.section>

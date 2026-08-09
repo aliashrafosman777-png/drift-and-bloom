@@ -15,7 +15,21 @@ const safeParse = (raw, fallback) => {
 
 function readStoredFishProducts() {
   if (typeof window === 'undefined') return null
-  return safeParse(localStorage.getItem(STORAGE_KEY), null)
+  const stored = safeParse(localStorage.getItem(STORAGE_KEY), null)
+  if (Array.isArray(stored)) {
+    return stored.map((p) => {
+      const subCat = p.fishSubCategory || p.subCategory || 'aquatic-life'
+      if (subCat === 'aquatic-life' && !p.aquaticLifeType) {
+        return {
+          ...p,
+          aquaticLifeType: 'betta-fish',
+          tags: Array.from(new Set([...(p.tags || []), 'Betta Fish'])),
+        }
+      }
+      return p
+    })
+  }
+  return stored
 }
 
 function matchesFishSubCategory(product, subCategoryId) {
@@ -29,6 +43,13 @@ function matchesFishSubCategory(product, subCategoryId) {
     ? product.category
     : [product.category].filter(Boolean)
   return cats.includes(subCategoryId)
+}
+
+const AQUATIC_LIFE_LABEL_MAP = {
+  'betta-fish': 'Betta Fish',
+  'shrimp': 'Shrimp',
+  'crab': 'Crab',
+  'pleco-fish': 'Pleco Fish',
 }
 
 export function FishProductProvider({ children }) {
@@ -61,6 +82,9 @@ export function FishProductProvider({ children }) {
       : []
 
     const subCat = rawForm.fishSubCategory || 'aquatic-life'
+    const aquaticLifeType = rawForm.aquaticLifeType || 'betta-fish'
+    const typeTag = AQUATIC_LIFE_LABEL_MAP[aquaticLifeType] || 'Betta Fish'
+    const tags = Array.from(new Set([...(rawForm.tags || []), typeTag]))
 
     const id =
       (rawForm.name || 'fish-product')
@@ -80,11 +104,12 @@ export function FishProductProvider({ children }) {
       image: images[0] || '/assets/fishs.jpeg',
       gallery: images.slice(1),
       category: 'fish',
-      categories: ['fish', subCat, ...(rawForm.tags || [])],
+      categories: ['fish', subCat, aquaticLifeType, typeTag, ...tags],
       subCategory: subCat,
       fishSubCategory: subCat,
+      aquaticLifeType,
       story: rawForm.story || '',
-      tags: rawForm.tags || [],
+      tags,
       status: rawForm.status || 'active',
       isActive: rawForm.status !== 'draft' && rawForm.status !== 'out_of_stock',
       _createdAt: new Date().toISOString(),
@@ -104,7 +129,7 @@ export function FishProductProvider({ children }) {
           description: product.description,
           price: product.price,
           discountPrice: product.discountPrice,
-          category: ['fish', subCat, ...(product.tags || [])],
+          category: ['fish', subCat, aquaticLifeType, ...tags],
           subCategory: subCat,
           packageCategory: 'fish',
           story: product.story,
@@ -128,29 +153,33 @@ export function FishProductProvider({ children }) {
       : []
 
     const subCat = rawForm.fishSubCategory || 'aquatic-life'
+    const aquaticLifeType = rawForm.aquaticLifeType || 'betta-fish'
+    const typeTag = AQUATIC_LIFE_LABEL_MAP[aquaticLifeType] || 'Betta Fish'
 
     setFishProducts((prev) =>
-      prev.map((p) =>
-        p.id === id
-          ? {
-              ...p,
-              name: rawForm.name || p.name,
-              price: Number(rawForm.price) || p.price,
-              discountPrice: rawForm.discountPrice ? Number(rawForm.discountPrice) : null,
-              description: rawForm.description ?? p.description,
-              shortDescription: rawForm.shortDescription ?? p.shortDescription,
-              image: images[0] || p.image,
-              gallery: images.length > 1 ? images.slice(1) : ((p as any).gallery || []),
-              subCategory: subCat,
-              fishSubCategory: subCat,
-              categories: ['fish', subCat, ...(rawForm.tags || p.tags || [])],
-              story: rawForm.story ?? p.story,
-              tags: rawForm.tags || p.tags,
-              status: rawForm.status || (p as any).status || 'active',
-              isActive: (rawForm.status || (p as any).status || 'active') !== 'draft' && (rawForm.status || (p as any).status || 'active') !== 'out_of_stock',
-            }
-          : p
-      )
+      prev.map((p) => {
+        if (p.id !== id) return p
+        const tags = Array.from(new Set([...(rawForm.tags || p.tags || []), typeTag]))
+        const statusVal = rawForm.status || (p as any).status || 'active'
+        return {
+          ...p,
+          name: rawForm.name || p.name,
+          price: Number(rawForm.price) || p.price,
+          discountPrice: rawForm.discountPrice ? Number(rawForm.discountPrice) : null,
+          description: rawForm.description ?? p.description,
+          shortDescription: rawForm.shortDescription ?? p.shortDescription,
+          image: images[0] || p.image,
+          gallery: images.length > 1 ? images.slice(1) : ((p as any).gallery || []),
+          subCategory: subCat,
+          fishSubCategory: subCat,
+          aquaticLifeType,
+          categories: ['fish', subCat, aquaticLifeType, typeTag, ...tags],
+          story: rawForm.story ?? p.story,
+          tags,
+          status: statusVal,
+          isActive: statusVal !== 'draft' && statusVal !== 'out_of_stock',
+        }
+      })
     )
   }, [])
 
@@ -159,10 +188,30 @@ export function FishProductProvider({ children }) {
     setFishProducts((prev) => prev.filter((p) => p.id !== id))
   }, [])
 
-  /** Get fish products by sub-category */
+  /** Get fish products by sub-category & optional aquatic life type filter */
   const getFishProductsBySubCategory = useCallback(
-    (subCategoryId) =>
-      fishProducts.filter((p) => matchesFishSubCategory(p, subCategoryId)),
+    (subCategoryId, aquaticLifeFilter = null) =>
+      fishProducts.filter((p) => {
+        if (!matchesFishSubCategory(p, subCategoryId)) return false
+        if (subCategoryId === 'aquatic-life' && aquaticLifeFilter && aquaticLifeFilter !== 'all') {
+          const typeKey = (p as any).aquaticLifeType || 'betta-fish'
+          const typeLabel = AQUATIC_LIFE_LABEL_MAP[typeKey] || 'Betta Fish'
+          const tags = p.tags || []
+          const target = aquaticLifeFilter.toLowerCase()
+          return (
+            typeKey.toLowerCase() === target ||
+            typeLabel.toLowerCase() === target ||
+            typeLabel.toLowerCase().replace(/\s+/g, '-') === target ||
+            (! (p as any).aquaticLifeType && (target === 'betta-fish' || target === 'betta fish')) ||
+            tags.some(
+              (t) =>
+                t.toLowerCase() === target ||
+                t.toLowerCase().replace(/\s+/g, '-') === target
+            )
+          )
+        }
+        return true
+      }),
     [fishProducts]
   )
 

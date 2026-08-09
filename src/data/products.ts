@@ -61,15 +61,7 @@ export const isBestSellerProduct = (product) =>
   );
 
 export const packageFilterOptions = [
-  { id: "all", label: "All Packages" },
   { id: BEST_SELLER_CATEGORY_ID, label: "⭐ Best Sellers" },
-  { id: "calm", label: "Calm" },
-  { id: "gifting", label: "Gifting" },
-  { id: "love", label: "Love" },
-  { id: "self-care", label: "Self-Care" },
-  { id: "fish", label: "🐟 Fish & Aquariums" },
-  { id: "aquariums", label: "🐚 Aquariums" },
-  { id: "aquatic-life", label: "💧 Aquatic Life" },
 ];
 
 export const categories = [
@@ -80,9 +72,6 @@ export const categories = [
   { id: "love", label: "Love" },
   { id: "self-care", label: "Self-Care" },
   { id: "new-beginnings", label: "New Beginnings" },
-  { id: "fish", label: "Fish & Aquariums" },
-  { id: "aquariums", label: "Aquariums" },
-  { id: "aquatic-life", label: "Aquatic Life" },
 ];
 
 export const products = [
@@ -629,9 +618,10 @@ export const packageBuilderProducts = [
     image: fishsImg,
     category: "fish",
     fishSubCategory: "aquatic-life",
+    aquaticLifeType: "betta-fish",
     story:
       "Mini Aquarium is a tiny world of movement and stillness, designed to make even a small corner feel considered.",
-    tags: ["Compact", "Calm", "Desk Friendly"],
+    tags: ["Betta Fish", "Compact", "Calm", "Desk Friendly"],
   },
   {
     id: "tank-medium-aquarium",
@@ -643,9 +633,10 @@ export const packageBuilderProducts = [
     image: fishsImg,
     category: "fish",
     fishSubCategory: "aquatic-life",
+    aquaticLifeType: "betta-fish",
     story:
       "Medium Aquarium is for the person who wants a living centerpiece — calm, expressive, and never loud.",
-    tags: ["Balanced", "Botanical", "Premium"],
+    tags: ["Betta Fish", "Balanced", "Botanical", "Premium"],
   },
   {
     id: "tank-premium-aquarium",
@@ -657,9 +648,10 @@ export const packageBuilderProducts = [
     image: fishsImg,
     category: "fish",
     fishSubCategory: "aquatic-life",
+    aquaticLifeType: "betta-fish",
     story:
       "Premium Aquarium turns the package into a full visual ritual — a quiet underwater garden made to be remembered.",
-    tags: ["Luxury", "Statement", "Gift Ready"],
+    tags: ["Betta Fish", "Luxury", "Statement", "Gift Ready"],
   },
 ];
 

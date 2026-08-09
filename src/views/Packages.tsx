@@ -58,15 +58,7 @@ export default function Packages() {
     if (activeCategory === BEST_SELLER_CATEGORY_ID) {
       list = list.filter(isBestSellerProduct);
     } else if (activeCategory !== "all") {
-      list = list.filter((p) => {
-        const catArray = Array.isArray(p.categories) ? p.categories : [p.category].filter(Boolean);
-        return (
-          catArray.includes(activeCategory) ||
-          p.category === activeCategory ||
-          p.fishSubCategory === activeCategory ||
-          (activeCategory === 'fish' && (p.category === 'fish' || !!p.fishSubCategory || catArray.includes('fish')))
-        );
-      });
+      list = list.filter((p) => p.categories?.includes(activeCategory) || p.category === activeCategory);
     }
     switch (sort) {
       case "price-asc":

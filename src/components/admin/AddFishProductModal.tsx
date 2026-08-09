@@ -17,6 +17,13 @@ const FISH_SUB_CATEGORY_OPTIONS = [
   { value: 'aquariums',    label: 'Aquariums — Fish tanks and setups' },
 ]
 
+const AQUATIC_LIFE_TYPE_OPTIONS = [
+  { value: 'betta-fish', label: 'Betta Fish' },
+  { value: 'shrimp',     label: 'Shrimp' },
+  { value: 'crab',       label: 'Crab' },
+  { value: 'pleco-fish', label: 'Pleco Fish' },
+]
+
 const STATUS_OPTIONS = [
   { value: 'active',       label: 'Active — visible on store' },
   { value: 'draft',        label: 'Draft — hidden from store' },
@@ -30,6 +37,7 @@ const EMPTY_FORM = {
   description:      '',
   story:            '',
   fishSubCategory:  'aquatic-life',
+  aquaticLifeType:  'betta-fish',
   price:            '',
   discountPrice:    '',
   tags:             [],
@@ -249,6 +257,13 @@ export default function AddFishProductModal({ onClose, editProduct = null }) {
                       onChange={handleChange}
                       options={FISH_SUB_CATEGORY_OPTIONS} required
                     />
+                    {form.fishSubCategory === 'aquatic-life' && (
+                      <FormSelect
+                        label="Aquatic Life Category" name="aquaticLifeType" value={form.aquaticLifeType}
+                        onChange={handleChange}
+                        options={AQUATIC_LIFE_TYPE_OPTIONS} required
+                      />
+                    )}
                   </FormSection>
 
                   <FormSection title="Pricing">
@@ -417,6 +432,7 @@ function toFormState(product) {
     description:      product.description      || '',
     story:            product.story            || '',
     fishSubCategory:  product.fishSubCategory  || 'aquatic-life',
+    aquaticLifeType:  product.aquaticLifeType  || 'betta-fish',
     price:            product.price?.toString() || '',
     discountPrice:    product.discountPrice?.toString() || '',
     tags:             product.tags             || [],

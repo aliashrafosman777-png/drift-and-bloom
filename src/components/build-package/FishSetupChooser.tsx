@@ -28,15 +28,13 @@ export default function FishSetupChooser({ onSelect }) {
     <div className="space-y-6">
       <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
         {fishSubCategories.map((sub, index) => {
-          // Dynamically check if there are products in this sub-category
           const products = getFishProductsBySubCategory(sub.id)
-          const isComingSoon = products.length === 0
 
           return (
             <motion.button
               key={sub.id}
               type="button"
-              onClick={() => !isComingSoon && onSelect(sub.id)}
+              onClick={() => onSelect(sub.id)}
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{
@@ -44,35 +42,19 @@ export default function FishSetupChooser({ onSelect }) {
                 duration: 0.45,
                 ease: [0.22, 1, 0.36, 1],
               }}
-              whileHover={isComingSoon ? {} : { y: -6, scale: 1.02 }}
-              whileTap={isComingSoon ? {} : { scale: 0.98 }}
-              className={`group relative flex flex-col overflow-hidden rounded-[24px] border text-left shadow-soft transition duration-300 ${
-                isComingSoon
-                  ? "cursor-default border-charcoal/8 bg-white/50 opacity-75"
-                  : "border-charcoal/10 bg-white/80 hover:border-gold/40 hover:shadow-lift"
-              }`}
-              disabled={isComingSoon}
+              whileHover={{ y: -6, scale: 1.02 }}
+              whileTap={{ scale: 0.98 }}
+              className="group relative flex flex-col overflow-hidden rounded-[24px] border border-charcoal/10 bg-white/80 text-left shadow-soft transition duration-300 hover:border-gold/40 hover:shadow-lift"
             >
               {/* Image */}
               <div className="relative h-48 overflow-hidden sm:h-56">
                 <OptimizedImage
                   src={sub.image}
                   alt={sub.label}
-                  className={`h-full w-full object-cover transition-transform duration-700 ease-out ${
-                    isComingSoon
-                      ? "grayscale-[30%]"
-                      : "group-hover:scale-105"
-                  }`}
+                  className="h-full w-full object-cover transition-transform duration-700 ease-out group-hover:scale-105"
                   loading="lazy"
                   decoding="async"
                 />
-                {isComingSoon && (
-                  <div className="absolute inset-0 flex items-center justify-center bg-charcoal/25 backdrop-blur-[2px]">
-                    <span className="inline-flex items-center gap-2 rounded-full bg-white/90 px-4 py-2 text-xs font-medium uppercase tracking-label text-charcoal/70 shadow-soft">
-                      <Clock size={13} /> Coming Soon
-                    </span>
-                  </div>
-                )}
                 <span className="pointer-events-none absolute inset-0 bg-gradient-to-t from-white/30 via-transparent to-transparent" />
               </div>
 
@@ -106,31 +88,17 @@ export default function FishSetupChooser({ onSelect }) {
                 </div>
 
                 {/* Product count badge */}
-                {!isComingSoon && (
-                  <div className="mt-3">
-                    <span className="text-xs text-olive/70">
-                      {products.length} {products.length === 1 ? 'product' : 'products'} available
-                    </span>
-                  </div>
-                )}
+                <div className="mt-3">
+                  <span className="text-xs text-olive/70 font-medium">
+                    {products.length} {products.length === 1 ? 'product' : 'products'} available
+                  </span>
+                </div>
 
                 {/* CTA */}
                 <div className="mt-6">
-                  {isComingSoon ? (
-                    <span className="inline-flex w-full items-center justify-center gap-2 rounded-full border border-charcoal/12 bg-beige/50 px-6 py-3 text-sm font-medium uppercase tracking-label text-charcoal/40">
-                      Coming Soon
-                    </span>
-                  ) : (
-                    <span
-                      className={`inline-flex w-full items-center justify-center gap-2 rounded-full border px-6 py-3 text-sm font-medium uppercase tracking-label transition duration-300 ${
-                        sub.id === "aquatic-life"
-                          ? "border-olive bg-transparent text-olive group-hover:bg-olive group-hover:text-cream"
-                          : "border-olive bg-olive text-cream group-hover:bg-olive-dark"
-                      }`}
-                    >
-                      {sub.cta} <ArrowRight size={14} className="transition duration-300 group-hover:translate-x-1" />
-                    </span>
-                  )}
+                  <span className="inline-flex w-full items-center justify-center gap-2 rounded-full border border-olive bg-olive px-6 py-3 text-sm font-medium uppercase tracking-label text-cream transition duration-300 group-hover:border-olive-dark group-hover:bg-olive-dark">
+                    Select Setup <ArrowRight size={14} />
+                  </span>
                 </div>
               </div>
             </motion.button>

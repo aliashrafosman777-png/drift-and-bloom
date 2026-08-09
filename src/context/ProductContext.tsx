@@ -14,7 +14,6 @@
 import React, { createContext, useContext, useEffect, useMemo, useState, useCallback } from 'react'
 import { apiFetch } from '../lib/api'
 import { BEST_SELLER_CATEGORY_ID, products as SEED } from '../data/products'
-import { useFishProducts } from './FishProductContext'
 
 const packageFallbackImage = "/assets/package.png"
 const CUSTOM_PRODUCTS_STORAGE_KEY = 'db_custom_products_v1'
@@ -70,10 +69,6 @@ export function ProductProvider({ children }) {
   const [isHydrated, setIsHydrated] = useState(false)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
-  
-  // Safely consume FishProductContext if available
-  const fishCtx = useFishProducts()
-  const fishProducts = fishCtx?.fishProducts || []
 
   // Hydrate customProducts from localStorage on mount (client-side only)
   useEffect(() => {
@@ -116,47 +111,15 @@ export function ProductProvider({ children }) {
     return () => { cancelled = true }
   }, [])
 
-  // Format fish products into store-compatible product objects
-  const formattedFishProducts = useMemo(() => {
-    return (fishProducts || []).map((fp) => ({
-      id: fp.id,
-      _id: fp.id,
-      name: fp.name,
-      tagline: fp.shortDescription || fp.tagline || 'Aquatic setup package',
-      shortDescription: fp.shortDescription || fp.tagline || '',
-      description: fp.description || fp.shortDescription || '',
-      story: fp.story || '',
-      price: Number(fp.price) || 0,
-      discountPrice: fp.discountPrice ? Number(fp.discountPrice) : null,
-      rating: Number(fp.rating) || 5.0,
-      reviews: Number(fp.reviews) || 0,
-      image: fp.image || '/assets/fishs.jpeg',
-      gallery: fp.gallery?.length ? fp.gallery : [fp.image || '/assets/fishs.jpeg'],
-      category: 'fish',
-      categories: ['fish', fp.fishSubCategory, ...(fp.tags || [])],
-      fishSubCategory: fp.fishSubCategory,
-      tags: fp.tags || [],
-      scent: 'Botanical Water & Living Aquaria',
-      status: fp.status || 'active',
-      isActive: fp.status !== 'draft' && fp.status !== 'out_of_stock',
-    }))
-  }, [fishProducts])
-
-  // Merge all sources into one unified catalog
+  // Catalog products (seed packages + custom packages added via Admin Packages)
   const products = useMemo(() => {
     const map = new Map()
     // 1. Base seed/API products
     baseProducts.forEach((p) => map.set(p.id || p._id, p))
     // 2. Custom added packages
     customProducts.forEach((p) => map.set(p.id || p._id, p))
-    // 3. Fish products from admin
-    formattedFishProducts.forEach((p) => {
-      if (p.isActive !== false) {
-        map.set(p.id, p)
-      }
-    })
     return Array.from(map.values())
-  }, [baseProducts, customProducts, formattedFishProducts])
+  }, [baseProducts, customProducts])
 
   /* ── CRUD helpers ──────────────────────────────────────────────────── */
 

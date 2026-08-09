@@ -14,18 +14,33 @@ function productStatusLabel(p) {
   return 'Active'
 }
 
-function subCategoryBadge(subCat) {
+const AQUATIC_LIFE_LABEL_MAP: Record<string, string> = {
+  'betta-fish': 'Betta Fish',
+  'shrimp': 'Shrimp',
+  'crab': 'Crab',
+  'pleco-fish': 'Pleco Fish',
+}
+
+function subCategoryBadge(product) {
+  const subCat = typeof product === 'string' ? product : (product.fishSubCategory || product.subCategory)
   if (subCat === 'aquariums') {
     return (
-      <span className="inline-flex items-center gap-1 text-xs bg-amber-50 text-amber-700 px-2 py-0.5 rounded-full">
+      <span className="inline-flex items-center gap-1 text-xs bg-amber-50 text-amber-700 px-2 py-0.5 rounded-full font-medium">
         <Shell size={11} /> Aquariums
       </span>
     )
   }
+  const typeKey = typeof product === 'object' ? (product.aquaticLifeType || '') : ''
+  const typeLabel = AQUATIC_LIFE_LABEL_MAP[typeKey] || (typeof product === 'object' && product.tags?.find(t => ['Betta Fish', 'Shrimp', 'Crab', 'Pleco Fish'].includes(t))) || 'Betta Fish'
   return (
-    <span className="inline-flex items-center gap-1 text-xs bg-blue-50 text-blue-700 px-2 py-0.5 rounded-full">
-      <Droplets size={11} /> Aquatic Life
-    </span>
+    <div className="flex flex-col items-start gap-1">
+      <span className="inline-flex items-center gap-1 text-xs bg-blue-50 text-blue-700 px-2 py-0.5 rounded-full font-medium">
+        <Droplets size={11} /> Aquatic Life
+      </span>
+      <span className="text-[10px] text-blue-700/80 font-semibold pl-1">
+        • {typeLabel}
+      </span>
+    </div>
   )
 }
 
@@ -164,7 +179,7 @@ export default function AdminFishProducts() {
                       </div>
                     </td>
                     <td className="py-3 px-4">
-                      {subCategoryBadge(p.fishSubCategory)}
+                      {subCategoryBadge(p)}
                     </td>
                     <td className="py-3 px-4">
                       <div>

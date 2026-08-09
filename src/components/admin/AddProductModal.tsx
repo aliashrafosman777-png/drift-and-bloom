@@ -19,9 +19,6 @@ const CATEGORY_OPTIONS = [
   { value: 'love',          label: 'Love' },
   { value: 'self-care',     label: 'Self-Care' },
   { value: 'new-beginnings',label: 'New Beginnings' },
-  { value: 'fish',          label: 'Fish & Aquariums' },
-  { value: 'aquariums',     label: 'Aquariums' },
-  { value: 'aquatic-life',  label: 'Aquatic Life' },
 ]
 
 const COLLECTION_OPTIONS = [
