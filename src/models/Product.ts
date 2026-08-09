@@ -40,6 +40,8 @@ export interface IProduct extends Document {
   shortDescription2: string
   story: string
   packageCategory: string
+  fishSubCategory: string
+  aquaticLifeType: string
   createdAt: Date
   updatedAt: Date
 }
@@ -87,6 +89,8 @@ const ProductSchema = new Schema<IProduct>(
     // Package builder fields
     story: { type: String, default: '' },
     packageCategory: { type: String, default: '' },
+    fishSubCategory: { type: String, default: '' },
+    aquaticLifeType: { type: String, default: '' },
   },
   {
     timestamps: true,

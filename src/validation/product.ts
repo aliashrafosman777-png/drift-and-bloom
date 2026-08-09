@@ -37,6 +37,8 @@ export const createProductSchema = z.object({
   reviewsCount: z.number().int().min(0).optional().default(0),
   story: z.string().optional().default(''),
   packageCategory: z.string().optional().default(''),
+  fishSubCategory: z.string().optional().default(''),
+  aquaticLifeType: z.string().optional().default(''),
 })
 
 export const updateProductSchema = createProductSchema.partial()
