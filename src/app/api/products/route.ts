@@ -133,6 +133,20 @@ function logServerError(operation: string, requestId: string, error: unknown) {
   })
 }
 
+function diagnosticErrorResponse(requestId: string, error: unknown) {
+  const err = error as { name?: string; message?: string; code?: number | string }
+  return withNoStore(NextResponse.json({
+    success: false,
+    message: 'Failed to fetch products.',
+    diagnostic: {
+      requestId,
+      errorName: String(err?.name || 'UnknownError').slice(0, 100),
+      errorCode: err?.code === undefined ? null : String(err.code).slice(0, 100),
+      errorMessage: String(err?.message || 'Unknown error').slice(0, 500),
+    },
+  }, { status: 500 }))
+}
+
 function canonicalizeFishProduct<T extends Record<string, unknown>>(data: T) {
   if (data.packageCategory !== 'fish') return data
 
@@ -196,8 +210,14 @@ function canonicalizeLegacyFishProductForRead<T extends Record<string, unknown>>
  */
 export async function GET(req: NextRequest) {
   const requestId = randomUUID()
+  let diagnosticsAuthorized = false
   try {
     const { searchParams } = new URL(req.url)
+    if (searchParams.get('diagnostics') === 'true') {
+      const diagnosticAuth = authenticateAdmin(req)
+      if (diagnosticAuth instanceof NextResponse) return withNoStore(diagnosticAuth)
+      diagnosticsAuthorized = true
+    }
     const includeInactive = searchParams.get('includeInactive') === 'true'
     if (includeInactive) {
       const auth = authenticateAdmin(req)
@@ -273,6 +293,7 @@ export async function GET(req: NextRequest) {
     }))
   } catch (error) {
     logServerError('list', requestId, error)
+    if (diagnosticsAuthorized) return diagnosticErrorResponse(requestId, error)
     return withNoStore(errorResponse('Failed to fetch products.', 500))
   }
 }

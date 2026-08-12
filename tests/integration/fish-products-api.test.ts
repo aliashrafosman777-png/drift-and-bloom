@@ -145,6 +145,11 @@ describe('fish products API persistence and consistency', () => {
     )
     expect(unauthorizedInactiveList.status).toBe(401)
 
+    const unauthorizedDiagnostics = await listProducts(
+      request('http://test/api/products?diagnostics=true&limit=100'),
+    )
+    expect(unauthorizedDiagnostics.status).toBe(401)
+
     const duplicate = await createProduct(
       request('http://test/api/products', 'POST', { ...baseProduct, name: '  e2e glass aquarium ' }, true),
     )
