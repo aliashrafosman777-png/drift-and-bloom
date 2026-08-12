@@ -276,11 +276,14 @@ export async function GET(req: NextRequest) {
     const [rawProducts, total] = await Promise.all([
       Product.aggregate([
         { $match: filter },
+        // Legacy documents can contain multi-megabyte embedded image arrays.
+        // Drop fields that are not part of the listing before MongoDB sorts,
+        // otherwise a small catalog can exceed the 32 MB in-memory sort limit.
+        { $project: LIST_PROJECTION },
         { $sort: sortQuery },
         { $skip: skip },
         { $limit: limit },
-        { $project: LIST_PROJECTION },
-      ]),
+      ]).allowDiskUse(true),
       Product.countDocuments(filter),
     ])
     const products = packageCategory === 'fish'

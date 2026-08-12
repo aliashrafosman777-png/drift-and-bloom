@@ -328,4 +328,33 @@ describe('fish products API persistence and consistency', () => {
       category: ['fish', 'aquariums'],
     })
   })
+
+  it('projects oversized legacy image arrays before sorting the product list', async () => {
+    const mongoose = (await import('mongoose')).default
+    const products = mongoose.connection.db.collection('products')
+    const oversizedLegacyImage = `data:image/jpeg;base64,${'A'.repeat(9 * 1024 * 1024)}`
+    const now = new Date()
+
+    await products.insertMany(Array.from({ length: 4 }, (_, index) => ({
+      name: `Oversized Legacy Product ${index}`,
+      slug: `oversized-legacy-product-${index}`,
+      price: index + 1,
+      category: ['legacy'],
+      images: [oversizedLegacyImage],
+      image: '',
+      thumbnail: '',
+      status: 'active',
+      isActive: true,
+      deletedAt: null,
+      createdAt: new Date(now.getTime() + index),
+      updatedAt: now,
+    })))
+
+    const response = await listProducts(
+      request('http://test/api/products?limit=100&sort=newest'),
+    )
+    expect(response.status).toBe(200)
+    const listedProducts = (await listJson(response)).data.products
+    expect(listedProducts.filter((product) => product.name.startsWith('Oversized Legacy Product'))).toHaveLength(4)
+  }, 90_000)
 })
