@@ -2,18 +2,19 @@
 
 Fish products use MongoDB as the only catalog source of truth. The admin page and the fish package builder both call `/api/products?packageCategory=fish`; admin requests add the authenticated `includeInactive=true` option. Mutable product responses are marked `private, no-store`, and the client refreshes after every confirmed mutation.
 
-The active application database is `driftandbloom`, and all catalog items are
-stored in its `products` collection. In Atlas, use
-`{ "packageCategory": "fish", "deletedAt": null }` to view current fish
-products. Do not write to the legacy `drift_and_bloom` database or its empty
-`fish product` collection: the current API, admin panel, package builder, and
-cart do not read them. A second fish-only collection would split the source of
-truth and recreate the consistency problem.
+Each environment's active database is the database selected by its
+`MONGODB_URI`; local and production database names do not have to be identical.
+All catalog items are stored in that database's `products` collection. In
+Atlas, use `{ "packageCategory": "fish", "deletedAt": null }` to view current
+fish products. Do not write to an empty `fish product` collection: the current
+API, admin panel, package builder, and cart do not read it. A second fish-only
+collection would split the source of truth and recreate the consistency
+problem.
 
 ## Required production configuration
 
 - `MONGODB_URI`: the production Atlas URI, including the intended database name.
-- `EXPECTED_MONGODB_DATABASE`: that database name. Startup fails closed when it does not match.
+- `EXPECTED_MONGODB_DATABASE`: strongly recommended. When configured, startup fails closed if it does not match the database selected by `MONGODB_URI`. Do not hardcode a fallback name because production and local environments may intentionally use different database names.
 - `EXPECTED_MONGODB_HOST`: the Atlas cluster hostname. Startup fails closed when it does not match.
 - `DATA_SOURCE_ID=production`: a safe environment label exposed as the `X-Data-Source` response header.
 - `JWT_SECRET`: the production signing secret.
