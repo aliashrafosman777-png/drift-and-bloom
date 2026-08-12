@@ -2,7 +2,7 @@
 "use client"
 
 import React, { useState } from 'react'
-import { Plus, Search, Edit2, Trash2, Fish, Shell, Droplets } from 'lucide-react'
+import { Plus, Search, Edit2, Trash2, Fish, Shell, Droplets, AlertCircle, RefreshCw } from 'lucide-react'
 import AddFishProductModal from '../../components/admin/AddFishProductModal'
 import StatusBadge from '../../components/admin/StatusBadge'
 import { useFishProducts } from '../../context/FishProductContext'
@@ -45,11 +45,19 @@ function subCategoryBadge(product) {
 }
 
 export default function AdminFishProducts() {
-  const { fishProducts, removeFishProduct } = useFishProducts()
+  const {
+    fishProducts,
+    loading,
+    error,
+    refreshFishProducts,
+    removeFishProduct,
+  } = useFishProducts()
   const [search, setSearch] = useState('')
   const [modalOpen, setModalOpen] = useState(false)
   const [editProduct, setEditProduct] = useState(null)
   const [filterSubCat, setFilterSubCat] = useState('all')
+  const [actionError, setActionError] = useState('')
+  const [deletingId, setDeletingId] = useState(null)
 
   let filtered = fishProducts.filter((p) =>
     p.name.toLowerCase().includes(search.toLowerCase())
@@ -62,9 +70,17 @@ export default function AdminFishProducts() {
   const openEdit = (product) => { setEditProduct(product); setModalOpen(true) }
   const closeModal = () => { setModalOpen(false); setEditProduct(null) }
 
-  const handleDelete = (id, name) => {
+  const handleDelete = async (id, name) => {
     if (window.confirm(`Remove "${name}"? This action cannot be undone.`)) {
-      removeFishProduct(id)
+      setActionError('')
+      setDeletingId(id)
+      try {
+        await removeFishProduct(id)
+      } catch (deleteError) {
+        setActionError(deleteError instanceof Error ? deleteError.message : 'The product could not be deleted.')
+      } finally {
+        setDeletingId(null)
+      }
     }
   }
 
@@ -80,7 +96,9 @@ export default function AdminFishProducts() {
             <Fish className="w-5 h-5 text-olive" /> Fish Products
           </h1>
           <p className="text-sm text-gray-500">
-            {fishProducts.length} products — {aquariumCount} Aquariums, {aquaticLifeCount} Aquatic Life
+            {loading && fishProducts.length === 0
+              ? 'Loading products from the database…'
+              : `${fishProducts.length} products — ${aquariumCount} Aquariums, ${aquaticLifeCount} Aquatic Life`}
           </p>
         </div>
         <button
@@ -93,6 +111,22 @@ export default function AdminFishProducts() {
           <Plus className="w-4 h-4" /> Add Fish Product
         </button>
       </div>
+
+      {(error || actionError) && (
+        <div className="flex items-start justify-between gap-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700" role="alert">
+          <span className="flex items-start gap-2">
+            <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+            {actionError || `Products could not be loaded: ${error}`}
+          </span>
+          <button
+            type="button"
+            onClick={() => { setActionError(''); void refreshFishProducts() }}
+            className="inline-flex shrink-0 items-center gap-1 font-medium underline"
+          >
+            <RefreshCw className="h-3.5 w-3.5" /> Retry
+          </button>
+        </div>
+      )}
 
       {/* Search + Filter */}
       <div className="flex flex-col sm:flex-row gap-3">
@@ -223,9 +257,10 @@ export default function AdminFishProducts() {
                           <Edit2 className="w-4 h-4" />
                         </button>
                         <button
-                          onClick={() => handleDelete(p.id, p.name)}
+                          onClick={() => void handleDelete(p.id, p.name)}
                           title="Delete"
-                          className="p-1.5 rounded-lg hover:bg-red-50 text-gray-400 hover:text-red-600 transition-colors"
+                          disabled={deletingId === p.id}
+                          className="p-1.5 rounded-lg hover:bg-red-50 text-gray-400 hover:text-red-600 transition-colors disabled:cursor-wait disabled:opacity-40"
                         >
                           <Trash2 className="w-4 h-4" />
                         </button>

@@ -1,6 +1,14 @@
+import { randomUUID } from 'crypto'
 import { NextRequest, NextResponse } from 'next/server'
 import slugify from 'slugify'
 import connectDB from '@/lib/mongodb'
+import {
+  buildFishCategories,
+  buildFishKey,
+  normalizeAquaticLifeType,
+  normalizeFishSubCategory,
+  statusIsStorefrontVisible,
+} from '@/lib/fishProducts'
 import Product from '@/models/Product'
 import { authenticateAdmin } from '@/middleware/auth'
 import { createProductSchema } from '@/validation/product'
@@ -8,150 +16,275 @@ import {
   successResponse,
   errorResponse,
   validationErrorResponse,
+  withNoStore,
 } from '@/utils/apiResponse'
 
-/**
- * GET /api/products
- * Public — supports pagination, search, sorting, and filtering.
- */
-export async function GET(req: NextRequest) {
-  try {
-    await connectDB()
+export const dynamic = 'force-dynamic'
+export const revalidate = 0
 
-    const { searchParams } = new URL(req.url)
+const DATA_URL_PATTERN = '^data:'
 
-    // Pagination
-    const page = Math.max(1, parseInt(searchParams.get('page') || '1', 10))
-    const limit = Math.min(100, Math.max(1, parseInt(searchParams.get('limit') || '20', 10)))
-    const skip = (page - 1) * limit
+function parsePositiveInteger(value: string | null, fallback: number, maximum?: number) {
+  const parsed = Number.parseInt(value || '', 10)
+  const positive = Number.isInteger(parsed) && parsed > 0 ? parsed : fallback
+  return maximum ? Math.min(maximum, positive) : positive
+}
 
-    // Build filter query
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const filter: Record<string, any> = { isActive: true }
+function escapeRegex(value: string) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
 
-    // Category filter
-    const category = searchParams.get('category')
-    if (category && category !== 'all') {
-      filter.category = category
-    }
-
-    // Price range
-    const minPrice = searchParams.get('minPrice')
-    const maxPrice = searchParams.get('maxPrice')
-    if (minPrice || maxPrice) {
-      filter.price = {}
-      if (minPrice) filter.price.$gte = parseFloat(minPrice)
-      if (maxPrice) filter.price.$lte = parseFloat(maxPrice)
-    }
-
-    // Featured / Best Seller
-    const featured = searchParams.get('featured')
-    if (featured === 'true') {
-      filter.bestSeller = true
-    }
-
-    // Search
-    const search = searchParams.get('search')
-    if (search) {
-      filter.$or = [
-        { name: { $regex: search, $options: 'i' } },
-        { description: { $regex: search, $options: 'i' } },
-        { tagline: { $regex: search, $options: 'i' } },
-      ]
-    }
-
-    // Package category (for build-your-package products)
-    const packageCategory = searchParams.get('packageCategory')
-    if (packageCategory) {
-      filter.packageCategory = packageCategory
-    }
-
-    // Sorting
-    const sort = searchParams.get('sort') || 'featured'
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    let sortQuery: Record<string, any> = { createdAt: -1 }
-
-    switch (sort) {
-      case 'price-asc':
-        sortQuery = { price: 1 }
-        break
-      case 'price-desc':
-        sortQuery = { price: -1 }
-        break
-      case 'rating':
-        sortQuery = { rating: -1 }
-        break
-      case 'newest':
-        sortQuery = { createdAt: -1 }
-        break
-      case 'best-selling':
-        sortQuery = { reviewsCount: -1 }
-        break
-      case 'featured':
-      default:
-        sortQuery = { bestSeller: -1, rating: -1 }
-        break
-    }
-
-    const [products, total] = await Promise.all([
-      Product.find(filter).sort(sortQuery).skip(skip).limit(limit).lean(),
-      Product.countDocuments(filter),
-    ])
-
-    return successResponse({
-      products,
-      pagination: {
-        page,
-        limit,
-        total,
-        pages: Math.ceil(total / limit),
+function durableImageProjection() {
+  return {
+    $let: {
+      vars: {
+        imageValue: { $ifNull: ['$image', ''] },
+        thumbnailValue: { $ifNull: ['$thumbnail', ''] },
       },
-    })
-  } catch (error) {
-    console.error('Get products error:', error)
-    return errorResponse('Failed to fetch products.', 500)
+      in: {
+        $cond: [
+          {
+            $and: [
+              { $ne: ['$$imageValue', ''] },
+              { $not: [{ $regexMatch: { input: '$$imageValue', regex: DATA_URL_PATTERN, options: 'i' } }] },
+            ],
+          },
+          '$$imageValue',
+          {
+            $cond: [
+              {
+                $and: [
+                  { $ne: ['$$thumbnailValue', ''] },
+                  { $not: [{ $regexMatch: { input: '$$thumbnailValue', regex: DATA_URL_PATTERN, options: 'i' } }] },
+                ],
+              },
+              '$$thumbnailValue',
+              '',
+            ],
+          },
+        ],
+      },
+    },
+  }
+}
+
+const LIST_PROJECTION = {
+  name: 1,
+  slug: 1,
+  tagline: 1,
+  description: 1,
+  shortDescription: 1,
+  price: 1,
+  discount: 1,
+  discountPrice: 1,
+  stock: 1,
+  sku: 1,
+  category: 1,
+  subCategory: 1,
+  brand: 1,
+  colors: 1,
+  sizes: 1,
+  tags: 1,
+  scent: 1,
+  mood: 1,
+  includes: 1,
+  plantOptions: 1,
+  featured: 1,
+  bestSeller: 1,
+  isActive: 1,
+  status: 1,
+  rating: 1,
+  reviewsCount: 1,
+  story: 1,
+  packageCategory: 1,
+  fishSubCategory: 1,
+  aquaticLifeType: 1,
+  fishKey: 1,
+  createdAt: 1,
+  updatedAt: 1,
+  __v: 1,
+  image: durableImageProjection(),
+}
+
+function logServerError(operation: string, requestId: string, error: unknown) {
+  const err = error as { name?: string; message?: string; code?: number }
+  console.error(`[products.${operation}]`, {
+    requestId,
+    errorName: err?.name || 'UnknownError',
+    errorCode: err?.code,
+    message: err?.message || 'Unknown error',
+  })
+}
+
+function canonicalizeFishProduct<T extends Record<string, unknown>>(data: T) {
+  if (data.packageCategory !== 'fish') return data
+
+  const fishSubCategory = normalizeFishSubCategory(
+    data.fishSubCategory || data.subCategory,
+    data.category,
+  )
+  if (!fishSubCategory) {
+    throw new Error('INVALID_FISH_SUB_CATEGORY')
+  }
+
+  const aquaticLifeType = normalizeAquaticLifeType(
+    data.aquaticLifeType,
+    data.category,
+    data.tags,
+  )
+  if (fishSubCategory === 'aquatic-life' && !aquaticLifeType) {
+    throw new Error('INVALID_AQUATIC_LIFE_TYPE')
+  }
+
+  const status = (data.status || 'active') as 'active' | 'draft' | 'out_of_stock'
+  return {
+    ...data,
+    packageCategory: 'fish',
+    fishSubCategory,
+    aquaticLifeType: fishSubCategory === 'aquatic-life' ? aquaticLifeType : '',
+    subCategory: fishSubCategory,
+    category: buildFishCategories(fishSubCategory, aquaticLifeType),
+    fishKey: buildFishKey(String(data.name || '')),
+    status,
+    isActive: statusIsStorefrontVisible(status),
+    deletedAt: null,
   }
 }
 
 /**
- * POST /api/products
- * Admin-protected — create a new product.
+ * GET /api/products
+ * Public by default. `includeInactive=true` is admin-only.
  */
-export async function POST(req: NextRequest) {
+export async function GET(req: NextRequest) {
+  const requestId = randomUUID()
   try {
-    const auth = authenticateAdmin(req)
-    if (auth instanceof NextResponse) return auth
+    const { searchParams } = new URL(req.url)
+    const includeInactive = searchParams.get('includeInactive') === 'true'
+    if (includeInactive) {
+      const auth = authenticateAdmin(req)
+      if (auth instanceof NextResponse) return withNoStore(auth)
+    }
 
     await connectDB()
 
-    const body = await req.json()
-    const parsed = createProductSchema.safeParse(body)
+    const page = parsePositiveInteger(searchParams.get('page'), 1)
+    const limit = parsePositiveInteger(searchParams.get('limit'), 20, 100)
+    const skip = (page - 1) * limit
+    const filter: Record<string, unknown> = { deletedAt: null }
 
-    if (!parsed.success) {
-      return validationErrorResponse(parsed.error)
+    if (!includeInactive) filter.isActive = true
+
+    const category = searchParams.get('category')
+    if (category && category !== 'all') filter.category = category
+
+    const minPrice = searchParams.get('minPrice')
+    const maxPrice = searchParams.get('maxPrice')
+    if (minPrice || maxPrice) {
+      const price: Record<string, number> = {}
+      const parsedMinPrice = Number(minPrice)
+      const parsedMaxPrice = Number(maxPrice)
+      if (minPrice && Number.isFinite(parsedMinPrice)) price.$gte = parsedMinPrice
+      if (maxPrice && Number.isFinite(parsedMaxPrice)) price.$lte = parsedMaxPrice
+      if (Object.keys(price).length) filter.price = price
     }
 
-    const data = parsed.data
+    if (searchParams.get('featured') === 'true') filter.bestSeller = true
 
-    // Generate slug
-    let slug = slugify(data.name, { lower: true, strict: true })
-
-    // Ensure unique slug
-    const existingSlug = await Product.findOne({ slug })
-    if (existingSlug) {
-      slug = `${slug}-${Date.now()}`
+    const search = searchParams.get('search')
+    if (search) {
+      const safeSearch = escapeRegex(search.trim().slice(0, 100))
+      filter.$or = [
+        { name: { $regex: safeSearch, $options: 'i' } },
+        { description: { $regex: safeSearch, $options: 'i' } },
+        { tagline: { $regex: safeSearch, $options: 'i' } },
+      ]
     }
 
-    const product = await Product.create({
+    const packageCategory = searchParams.get('packageCategory')
+    if (packageCategory) filter.packageCategory = packageCategory
+
+    const excludePackageCategory = searchParams.get('excludePackageCategory')
+    if (excludePackageCategory) filter.packageCategory = { $ne: excludePackageCategory }
+
+    const sort = searchParams.get('sort') || 'featured'
+    let sortQuery: Record<string, 1 | -1> = { bestSeller: -1, rating: -1, createdAt: -1, _id: -1 }
+    if (sort === 'price-asc') sortQuery = { price: 1, _id: 1 }
+    if (sort === 'price-desc') sortQuery = { price: -1, _id: 1 }
+    if (sort === 'rating') sortQuery = { rating: -1, _id: 1 }
+    if (sort === 'newest') sortQuery = { createdAt: -1, _id: -1 }
+    if (sort === 'best-selling') sortQuery = { reviewsCount: -1, _id: 1 }
+
+    const [products, total] = await Promise.all([
+      Product.aggregate([
+        { $match: filter },
+        { $sort: sortQuery },
+        { $skip: skip },
+        { $limit: limit },
+        { $project: LIST_PROJECTION },
+      ]),
+      Product.countDocuments(filter),
+    ])
+
+    return withNoStore(successResponse({
+      products,
+      pagination: { page, limit, total, pages: Math.ceil(total / limit) },
+    }))
+  } catch (error) {
+    logServerError('list', requestId, error)
+    return withNoStore(errorResponse('Failed to fetch products.', 500))
+  }
+}
+
+/** POST /api/products - admin-only product creation. */
+export async function POST(req: NextRequest) {
+  const requestId = randomUUID()
+  try {
+    const auth = authenticateAdmin(req)
+    if (auth instanceof NextResponse) return withNoStore(auth)
+
+    await connectDB()
+    const parsed = createProductSchema.safeParse(await req.json())
+    if (!parsed.success) return withNoStore(validationErrorResponse(parsed.error))
+
+    let data: Record<string, unknown>
+    try {
+      data = canonicalizeFishProduct(parsed.data)
+    } catch (error) {
+      const message = (error as Error).message === 'INVALID_AQUATIC_LIFE_TYPE'
+        ? 'Aquatic Life products require a valid aquatic life type.'
+        : 'Fish products require a valid fish sub-category.'
+      return withNoStore(errorResponse(message, 400))
+    }
+
+    if (data.fishKey && await Product.exists({ fishKey: data.fishKey })) {
+      return withNoStore(errorResponse('A fish product with this name already exists.', 409))
+    }
+
+    const baseSlug = slugify(String(data.name), { lower: true, strict: true })
+    let slug = baseSlug
+    if (await Product.exists({ slug })) slug = `${baseSlug}-${randomUUID().slice(0, 8)}`
+
+    const product = new Product({
       ...data,
       slug,
-      image: data.image || data.images?.[0] || '',
-      thumbnail: data.thumbnail || data.image || data.images?.[0] || '',
+      image: String(data.image || (data.images as string[] | undefined)?.[0] || ''),
+      thumbnail: String(data.thumbnail || data.image || (data.images as string[] | undefined)?.[0] || ''),
+    })
+    await product.save()
+    console.info('[products.create]', {
+      requestId,
+      productId: product._id.toString(),
+      packageCategory: product.packageCategory || 'catalog',
+      version: product.__v,
     })
 
-    return successResponse(product, 'Product created successfully.', 201)
+    return withNoStore(successResponse(product.toObject(), 'Product created successfully.', 201))
   } catch (error) {
-    console.error('Create product error:', error)
-    return errorResponse('Failed to create product.', 500)
+    const mongoError = error as { code?: number }
+    if (mongoError?.code === 11000) {
+      return withNoStore(errorResponse('A product with the same stable identifier already exists.', 409))
+    }
+    logServerError('create', requestId, error)
+    return withNoStore(errorResponse('Failed to create product.', 500))
   }
 }

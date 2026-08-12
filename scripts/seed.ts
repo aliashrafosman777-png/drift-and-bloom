@@ -399,6 +399,17 @@ const packageBuilderProducts = [
 // ─── Main Seed Function ─────────────────────────────────────────────────────
 
 async function seed() {
+  if (
+    process.env.NODE_ENV === 'production' ||
+    process.env.VERCEL_ENV === 'production' ||
+    !process.argv.includes('--reset') ||
+    process.env.ALLOW_DATABASE_RESET !== 'LOCAL_DEVELOPMENT_ONLY'
+  ) {
+    throw new Error(
+      'Destructive seed blocked. It is forbidden in production and requires --reset plus ALLOW_DATABASE_RESET=LOCAL_DEVELOPMENT_ONLY.',
+    )
+  }
+
   console.log('🌱 Connecting to MongoDB…')
   await mongoose.connect(MONGODB_URI as string)
   console.log('✅ Connected\n')

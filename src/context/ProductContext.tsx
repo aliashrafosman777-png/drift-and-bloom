@@ -14,7 +14,6 @@
 import React, { createContext, useContext, useEffect, useMemo, useState, useCallback } from 'react'
 import { apiFetch } from '../lib/api'
 import { BEST_SELLER_CATEGORY_ID, products as SEED } from '../data/products'
-import { useFishProducts } from './FishProductContext'
 
 const packageFallbackImage = "/assets/package.png"
 const CUSTOM_PRODUCTS_STORAGE_KEY = 'db_custom_products_v1'
@@ -71,10 +70,6 @@ export function ProductProvider({ children }) {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
 
-  // Safely consume FishProductContext if available
-  const fishCtx = useFishProducts()
-  const fishProducts = fishCtx?.fishProducts || []
-
   // Hydrate customProducts from localStorage on mount (client-side only)
   useEffect(() => {
     const stored = readStoredCustomProducts()
@@ -101,7 +96,7 @@ export function ProductProvider({ children }) {
     async function fetchProducts() {
       try {
         setLoading(true)
-        const res = await apiFetch('/api/products?limit=100')
+        const res = await apiFetch('/api/products?limit=100&excludePackageCategory=fish', { cache: 'no-store' })
         if (!cancelled && res.data?.products?.length > 0) {
           setBaseProducts(res.data.products.map(normalizeProduct))
         }
@@ -115,33 +110,6 @@ export function ProductProvider({ children }) {
     fetchProducts()
     return () => { cancelled = true }
   }, [])
-
-  // Format fish products into store-compatible product objects
-  const formattedFishProducts = useMemo(() => {
-    return (fishProducts || []).map((fp) => ({
-      id: fp.id,
-      _id: fp.id,
-      name: fp.name,
-      tagline: fp.shortDescription || fp.tagline || 'Aquatic setup package',
-      shortDescription: fp.shortDescription || fp.tagline || '',
-      description: fp.description || fp.shortDescription || '',
-      story: fp.story || '',
-      price: Number(fp.price) || 0,
-      discountPrice: fp.discountPrice ? Number(fp.discountPrice) : null,
-      rating: Number(fp.rating) || 5.0,
-      reviews: Number(fp.reviews) || 0,
-      image: fp.image || '/assets/fishs.jpeg',
-      gallery: fp.gallery?.length ? fp.gallery : [fp.image || '/assets/fishs.jpeg'],
-      category: 'fish',
-      categories: ['fish', fp.fishSubCategory || fp.subCategory, fp.aquaticLifeType, ...(fp.tags || [])].filter(Boolean),
-      fishSubCategory: fp.fishSubCategory || fp.subCategory,
-      aquaticLifeType: fp.aquaticLifeType,
-      tags: fp.tags || [],
-      scent: 'Botanical Water & Living Aquaria',
-      status: fp.status || 'active',
-      isActive: fp.status !== 'draft' && fp.status !== 'out_of_stock',
-    }))
-  }, [fishProducts])
 
   // Catalog products (SEED packages + API DB packages + custom packages)
   // NOTE: Fish products are intentionally EXCLUDED from this catalog.

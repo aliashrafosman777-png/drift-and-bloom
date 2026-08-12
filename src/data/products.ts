@@ -623,8 +623,8 @@ export const packageBuilderProducts = [
     shortDescription: "Compact aquarium for refined small spaces.",
     image: fishsImg,
     category: "fish",
-    fishSubCategory: "aquatic-life",
-    aquaticLifeType: "betta-fish",
+    fishSubCategory: "aquariums",
+    aquaticLifeType: "",
     story:
       "Mini Aquarium is a tiny world of movement and stillness, designed to make even a small corner feel considered.",
     tags: ["Betta Fish", "Compact", "Calm", "Desk Friendly"],
@@ -638,8 +638,8 @@ export const packageBuilderProducts = [
     shortDescription: "Balanced size with a calm botanical scene.",
     image: fishsImg,
     category: "fish",
-    fishSubCategory: "aquatic-life",
-    aquaticLifeType: "betta-fish",
+    fishSubCategory: "aquariums",
+    aquaticLifeType: "",
     story:
       "Medium Aquarium is for the person who wants a living centerpiece — calm, expressive, and never loud.",
     tags: ["Betta Fish", "Balanced", "Botanical", "Premium"],
@@ -653,8 +653,8 @@ export const packageBuilderProducts = [
     shortDescription: "A premium living centerpiece for gifting.",
     image: fishsImg,
     category: "fish",
-    fishSubCategory: "aquatic-life",
-    aquaticLifeType: "betta-fish",
+    fishSubCategory: "aquariums",
+    aquaticLifeType: "",
     story:
       "Premium Aquarium turns the package into a full visual ritual — a quiet underwater garden made to be remembered.",
     tags: ["Betta Fish", "Luxury", "Statement", "Gift Ready"],
@@ -669,19 +669,4 @@ export const packageBuilderProductsByCategory = buildPackageCategories.reduce(
     return groups;
   },
   {},
-);
-
-export const fishSubCategoryProducts = fishSubCategories.reduce(
-  (groups, sub) => {
-    groups[sub.id] = packageBuilderProducts.filter(
-      (product) => product.category === "fish" && product.fishSubCategory === sub.id,
-    );
-    return groups;
-  },
-  {},
-);
-
-// Seed data for the FishProductContext — the initial fish builder products
-export const FISH_PRODUCT_SEED = packageBuilderProducts.filter(
-  (product) => product.category === "fish",
 );

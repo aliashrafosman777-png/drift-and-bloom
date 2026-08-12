@@ -8,6 +8,11 @@ if (!MONGODB_URI) {
   )
 }
 
+const expectedMongoHost = process.env.EXPECTED_MONGODB_HOST
+if (expectedMongoHost && new URL(MONGODB_URI).hostname !== expectedMongoHost) {
+  throw new Error('Configured MongoDB host does not match EXPECTED_MONGODB_HOST.')
+}
+
 /**
  * Global cache for the Mongoose connection promise.
  * In development, Next.js HMR clears the Node module cache on every edit,
@@ -20,7 +25,6 @@ interface MongooseCache {
 }
 
 declare global {
-  // eslint-disable-next-line no-var
   var _mongooseCache: MongooseCache | undefined
 }
 
@@ -41,6 +45,16 @@ export async function connectDB(): Promise<typeof mongoose> {
     }
 
     cached.promise = mongoose.connect(MONGODB_URI as string, opts).then((m) => {
+      const databaseName = m.connection.name
+      const expectedDatabase = process.env.EXPECTED_MONGODB_DATABASE
+      if (expectedDatabase && databaseName !== expectedDatabase) {
+        void m.disconnect()
+        throw new Error('Connected MongoDB database does not match EXPECTED_MONGODB_DATABASE.')
+      }
+      console.info('[database.connected]', {
+        dataSource: process.env.DATA_SOURCE_ID || process.env.VERCEL_ENV || process.env.NODE_ENV || 'unknown',
+        database: databaseName,
+      })
       return m
     })
   }

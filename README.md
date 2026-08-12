@@ -1,8 +1,8 @@
-# Drift & Bloom — Next.js Migration
+# Drift & Bloom
 
-A production-ready Next.js App Router version of the original Drift & Bloom React + Vite storefront.
+A Next.js App Router storefront and administration application backed by MongoDB.
 
-The visual design, Tailwind theme, animations, routes, local-data flows, mock authentication, admin screens, cart behavior, package builder, and quiz experience were preserved while migrating the runtime to Next.js, TypeScript, App Router, optimized images, metadata, sitemap, and robots support.
+Fish products are read from and mutated through the shared product API. MongoDB is their only source of truth; product images are stored in Cloudinary.
 
 ## Tech stack
 
@@ -11,7 +11,8 @@ The visual design, Tailwind theme, animations, routes, local-data flows, mock au
 - TypeScript
 - Tailwind CSS
 - Framer Motion
-- Local mock data and browser storage contexts
+- MongoDB/Mongoose persistence
+- Cloudinary product image storage
 
 ## Getting started
 
@@ -34,6 +35,16 @@ npm run start
 ```bash
 npm run type-check
 ```
+
+## Fish product verification
+
+```bash
+npm test
+npm run test:integration
+npm run test:e2e
+```
+
+Integration and browser tests create a uniquely named isolated database, verify its name before cleanup, and never modify the configured application database. See `docs/fish-products-operations.md` for production migration and validation steps.
 
 ## Demo accounts
 

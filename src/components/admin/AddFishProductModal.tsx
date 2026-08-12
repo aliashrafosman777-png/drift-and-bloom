@@ -90,6 +90,7 @@ export default function AddFishProductModal({ onClose, editProduct = null }) {
   const [errors, setErrors] = useState({})
   const [status, setStatus] = useState('idle')
   const [saving, setSaving] = useState(false)
+  const [submitError, setSubmitError] = useState('')
 
   const modalRef = useRef()
 
@@ -124,18 +125,20 @@ export default function AddFishProductModal({ onClose, editProduct = null }) {
     }
 
     setSaving(true)
+    setSubmitError('')
+    setStatus('idle')
     try {
-      await new Promise((r) => setTimeout(r, 300))
       const payload = { ...form, images }
       if (isEditing) {
-        updateFishProduct(editProduct.id, payload)
+        await updateFishProduct(editProduct.id, payload)
       } else {
-        addFishProduct(payload)
+        await addFishProduct(payload)
       }
       setStatus('success')
       setTimeout(onClose, 1000)
-    } catch {
+    } catch (error) {
       setStatus('error')
+      setSubmitError(error instanceof Error ? error.message : 'The product could not be saved.')
       setSaving(false)
     }
   }
@@ -177,7 +180,7 @@ export default function AddFishProductModal({ onClose, editProduct = null }) {
         )}
         {status === 'error' && (
           <div className="mx-7 mt-5 flex items-center gap-2 bg-red-50 text-red-600 rounded-xl px-4 py-3 text-sm">
-            <AlertCircle size={16} /> Something went wrong. Please try again.
+            <AlertCircle size={16} /> {submitError || 'The product could not be saved. Please try again.'}
           </div>
         )}
 

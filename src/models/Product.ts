@@ -1,4 +1,5 @@
 import mongoose, { Schema, Document, Model } from 'mongoose'
+import type { ProductStatus } from '@/lib/fishProducts'
 
 export interface IPlantOption {
   name: string
@@ -34,6 +35,10 @@ export interface IProduct extends Document {
   featured: boolean
   bestSeller: boolean
   isActive: boolean
+  status: ProductStatus
+  deletedAt: Date | null
+  fishKey: string | null
+  imagePublicIds: string[]
   rating: number
   reviewsCount: number
   // Package builder fields
@@ -84,6 +89,13 @@ const ProductSchema = new Schema<IProduct>(
     featured: { type: Boolean, default: false },
     bestSeller: { type: Boolean, default: false, index: true },
     isActive: { type: Boolean, default: true, index: true },
+    status: {
+      type: String,
+      enum: ['active', 'draft', 'out_of_stock'],
+      default: 'active',
+      index: true,
+    },
+    deletedAt: { type: Date, default: null, index: true },
     rating: { type: Number, default: 0, min: 0, max: 5 },
     reviewsCount: { type: Number, default: 0, min: 0 },
     // Package builder fields
@@ -91,6 +103,8 @@ const ProductSchema = new Schema<IProduct>(
     packageCategory: { type: String, default: '' },
     fishSubCategory: { type: String, default: '' },
     aquaticLifeType: { type: String, default: '' },
+    fishKey: { type: String, default: null },
+    imagePublicIds: { type: [String], default: [] },
   },
   {
     timestamps: true,
@@ -103,6 +117,15 @@ ProductSchema.index({ name: 'text', description: 'text', tagline: 'text' })
 // Compound index for filtered product listings
 ProductSchema.index({ category: 1, price: 1 })
 ProductSchema.index({ isActive: 1, bestSeller: 1 })
+ProductSchema.index(
+  { fishKey: 1 },
+  {
+    unique: true,
+    partialFilterExpression: { fishKey: { $type: 'string' } },
+    name: 'unique_fish_product_name',
+  },
+)
+ProductSchema.index({ packageCategory: 1, deletedAt: 1, isActive: 1, createdAt: -1 })
 
 const Product: Model<IProduct> =
   mongoose.models.Product || mongoose.model<IProduct>('Product', ProductSchema)

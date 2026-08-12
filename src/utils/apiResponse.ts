@@ -53,3 +53,16 @@ export function validationErrorResponse(
   )
   return errorResponse(messages.join('; '), 400)
 }
+
+/** Prevent browser, CDN, and framework caches from retaining mutable API data. */
+export function withNoStore<T extends NextResponse>(response: T): T {
+  response.headers.set('Cache-Control', 'private, no-store, no-cache, max-age=0, must-revalidate')
+  response.headers.set('Pragma', 'no-cache')
+  response.headers.set('Expires', '0')
+  response.headers.set('Vary', 'Authorization')
+  response.headers.set(
+    'X-Data-Source',
+    process.env.DATA_SOURCE_ID || process.env.VERCEL_ENV || process.env.NODE_ENV || 'unknown',
+  )
+  return response
+}

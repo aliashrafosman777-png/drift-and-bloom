@@ -117,6 +117,7 @@ export default function BuildPackage() {
     selectedList,
     itemCount,
     addItem,
+    replaceItem,
     removeItem,
     updateQuantity,
     incrementItem,
@@ -154,7 +155,13 @@ export default function BuildPackage() {
   const isFishCategory = activeCategory.id === "fish";
   const showFishChooser = isFishCategory && fishSubCategory === null;
   const [aquaticLifeFilter, setAquaticLifeFilter] = useState("all");
-  const { getFishProductsBySubCategory } = useFishProducts();
+  const {
+    fishProducts,
+    loading: fishProductsLoading,
+    error: fishProductsError,
+    refreshFishProducts,
+    getFishProductsBySubCategory,
+  } = useFishProducts();
   const activeProducts = useMemo(
     () => {
       if (isFishCategory && fishSubCategory) {
@@ -166,6 +173,29 @@ export default function BuildPackage() {
   );
   const total = getTotal();
   const progress = getProgress();
+
+  // Package selections may be restored from localStorage, but fish product data
+  // is always reconciled against the current database response before use.
+  useEffect(() => {
+    if (fishProductsLoading) return;
+    const activeFish = new Map(fishProducts.filter((product) => product.isActive).map((product) => [product.id, product]));
+    selectedList.forEach(({ product, quantity }) => {
+      if (product.category !== "fish") return;
+      const current = activeFish.get(product.id);
+      if (!current) {
+        removeItem(product.id);
+        return;
+      }
+      if (
+        product.version !== current.version ||
+        product.price !== current.price ||
+        product.name !== current.name ||
+        product.image !== current.image
+      ) {
+        replaceItem(current, quantity);
+      }
+    });
+  }, [fishProducts, fishProductsLoading, removeItem, replaceItem, selectedList]);
 
   const scrollToBuilderTop = () => {
     window.requestAnimationFrame(() => {
@@ -241,7 +271,12 @@ export default function BuildPackage() {
       const category = displayCategories.find((item) => item.id === categoryId);
 
       return {
+        productId: product.id,
+        productVersion: product.version,
         category: category?.label || product.category,
+        productCategory: product.category,
+        fishSubCategory: product.fishSubCategory || null,
+        aquaticLifeType: product.aquaticLifeType || null,
         productName: product.name,
         quantity,
         price: product.price,
@@ -426,7 +461,22 @@ export default function BuildPackage() {
                     </div>
                   </div>
 
-                  {showFishChooser ? (
+                  {isFishCategory && fishProductsLoading ? (
+                    <div className="rounded-2xl border border-charcoal/10 bg-white/60 px-6 py-12 text-center text-sm text-charcoal/60">
+                      Loading current fish products…
+                    </div>
+                  ) : isFishCategory && fishProductsError ? (
+                    <div className="rounded-2xl border border-red-200 bg-red-50 px-6 py-10 text-center" role="alert">
+                      <p className="text-sm text-red-700">Fish products could not be loaded: {fishProductsError}</p>
+                      <button
+                        type="button"
+                        onClick={() => void refreshFishProducts()}
+                        className="mt-4 rounded-full border border-red-300 px-4 py-2 text-xs font-medium text-red-700"
+                      >
+                        Try again
+                      </button>
+                    </div>
+                  ) : showFishChooser ? (
                     <FishSetupChooser onSelect={handleFishSubCategorySelect} />
                   ) : (
                     <div className="space-y-5">

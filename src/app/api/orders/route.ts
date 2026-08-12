@@ -2,8 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import connectDB from '@/lib/mongodb'
 import Order from '@/models/Order'
 import Product from '@/models/Product'
-import User from '@/models/User'
-import { authenticate, authenticateAdmin } from '@/middleware/auth'
+import { authenticate } from '@/middleware/auth'
 import { createOrderSchema } from '@/validation/order'
 import {
   successResponse,
@@ -12,6 +11,7 @@ import {
 } from '@/utils/apiResponse'
 import { getTokenFromRequest, verifyToken } from '@/lib/auth'
 import { sendOrderConfirmationEmail } from '@/lib/emailService'
+import { safeProductImage } from '@/lib/fishProducts'
 
 /**
  * Try to get the logged-in user ID from the token, or return null for guests.
@@ -156,10 +156,61 @@ export async function POST(req: NextRequest) {
     for (const item of parsed.data.items) {
       // Custom packages don't reference a real product
       if (item.isCustomPackage || !item.product || item.product.startsWith('custom-package-')) {
-        console.log('[Checkout]   → Custom package:', item.name, '— skipping product lookup')
+        const packageSelections = []
+        let packagePrice = 0
+
+        for (const rawSelection of item.packageSelections) {
+          const selection = rawSelection as Record<string, unknown>
+          const productId = typeof selection.productId === 'string' ? selection.productId : ''
+          const quantity = Math.max(1, Number.parseInt(String(selection.quantity || 1), 10) || 1)
+          let selectionPrice = Number(selection.price) || 0
+          let resolvedSelection: Record<string, unknown> = { ...selection, quantity }
+
+          if (/^[0-9a-fA-F]{24}$/.test(productId)) {
+            const product = await Product.findOne({
+              _id: productId,
+              packageCategory: 'fish',
+              isActive: true,
+              deletedAt: null,
+            }).select('_id name price fishSubCategory aquaticLifeType __v').lean()
+
+            if (!product) {
+              return errorResponse(
+                'A fish product in this package is no longer available. Please rebuild the package.',
+                409,
+              )
+            }
+
+            const expectedVersion = Number(selection.productVersion)
+            if (Number.isInteger(expectedVersion) && expectedVersion !== product.__v) {
+              return errorResponse(
+                'A fish product in this package changed. Please review the latest product and price.',
+                409,
+              )
+            }
+
+            selectionPrice = product.price
+            resolvedSelection = {
+              ...selection,
+              productId: product._id.toString(),
+              productVersion: product.__v,
+              productName: product.name,
+              price: product.price,
+              fishSubCategory: product.fishSubCategory,
+              aquaticLifeType: product.aquaticLifeType,
+              quantity,
+            }
+          }
+
+          packagePrice += selectionPrice * quantity
+          packageSelections.push(resolvedSelection)
+        }
+
         resolvedItems.push({
           ...item,
           product: null,
+          price: packagePrice,
+          packageSelections,
           isCustomPackage: true,
         })
         continue
@@ -168,28 +219,46 @@ export async function POST(req: NextRequest) {
       // If it's a valid 24-char hex ObjectId, try to verify the product exists
       if (/^[0-9a-fA-F]{24}$/.test(item.product)) {
         try {
-          const product = await Product.findById(item.product).select('_id name price isActive').lean()
+          const product = await Product.findOne({
+            _id: item.product,
+            isActive: true,
+            deletedAt: null,
+          }).select('_id name price image isActive').lean()
           if (product) {
-            console.log('[Checkout]   → Resolved by ID:', (product as any).name || item.name)
-            resolvedItems.push({ ...item, product: (product as any)._id.toString() })
+            console.log('[Checkout]   → Resolved by ID:', product.name || item.name)
+            resolvedItems.push({
+              ...item,
+              product: product._id.toString(),
+              name: product.name,
+              price: product.price,
+              image: safeProductImage(product.image, item.image),
+            })
           } else {
-            // Product not found by ID — still allow order (cart has all needed data)
-            console.warn('[Checkout]   ⚠ Product not found by ID:', item.product, '— proceeding with cart data')
-            resolvedItems.push({ ...item, product: null })
+            return errorResponse('A product in your cart is no longer available. Please refresh your cart.', 409)
           }
         } catch (lookupErr) {
-          console.warn('[Checkout]   ⚠ Product lookup error:', (lookupErr as Error).message, '— proceeding with cart data')
-          resolvedItems.push({ ...item, product: null })
+          console.error('[Checkout] Product lookup failed:', (lookupErr as Error).message)
+          return errorResponse('A product in your cart could not be verified. Please try again.', 503)
         }
         continue
       }
 
       // Otherwise treat as a slug — try to look up the real product _id
       try {
-        const product = await Product.findOne({ slug: item.product }).select('_id name price isActive').lean()
+        const product = await Product.findOne({
+          slug: item.product,
+          isActive: true,
+          deletedAt: null,
+        }).select('_id name price image isActive').lean()
         if (product) {
-          console.log('[Checkout]   → Resolved by slug:', (product as any).name || item.name)
-          resolvedItems.push({ ...item, product: (product as any)._id.toString() })
+          console.log('[Checkout]   → Resolved by slug:', product.name || item.name)
+          resolvedItems.push({
+            ...item,
+            product: product._id.toString(),
+            name: product.name,
+            price: product.price,
+            image: safeProductImage(product.image, item.image),
+          })
         } else {
           // Product not found by slug — still allow order (cart has all needed data)
           console.warn('[Checkout]   ⚠ Product not found by slug:', item.product, '— proceeding with cart data')
@@ -206,7 +275,7 @@ export async function POST(req: NextRequest) {
     // ── Step 5: Try to link to logged-in user (optional) ─────────────
     const userId = getOptionalUserId(req)
     if (userId) {
-      console.log('[Checkout] ✓ Linked to user:', userId)
+      console.log('[Checkout] ✓ Linked to authenticated customer')
     } else {
       console.log('[Checkout] ○ Guest checkout')
     }
@@ -214,12 +283,27 @@ export async function POST(req: NextRequest) {
     // ── Step 6: Create the order ─────────────────────────────────────
     console.log('[Checkout] Creating order in database...')
 
+    const authoritativeSubtotal = resolvedItems.reduce(
+      (sum, item) => sum + Number(item.price || 0) * Number(item.quantity || 1),
+      0,
+    )
+    const authoritativeDiscount = Math.min(parsed.data.discount, authoritativeSubtotal)
+    const authoritativeShipping = authoritativeSubtotal === 0 || authoritativeSubtotal >= 3000 ? 0 : 100
+    const authoritativeTotal = Math.max(
+      0,
+      authoritativeSubtotal - authoritativeDiscount + authoritativeShipping + parsed.data.tax,
+    )
+
     const order = await Order.create({
       ...parsed.data,
       fullName: sanitizedName,
       email: sanitizedEmail,
       phone: sanitizedPhone,
       items: resolvedItems,
+      subtotal: authoritativeSubtotal,
+      discount: authoritativeDiscount,
+      shipping: authoritativeShipping,
+      total: authoritativeTotal,
       customer: userId || null,
       paymentStatus: 'pending',
       orderStatus: 'Pending',
@@ -239,7 +323,7 @@ export async function POST(req: NextRequest) {
         orderId: order._id.toString(),
         fullName: order.fullName,
         email: order.email,
-        items: order.items.map((item: any) => ({
+        items: order.items.map((item) => ({
           name: item.name,
           price: item.price,
           quantity: item.quantity,
@@ -258,7 +342,7 @@ export async function POST(req: NextRequest) {
         giftMessage: order.giftMessage,
         createdAt: order.createdAt,
       })
-      console.log('[Checkout] ✓ Confirmation email sent to', order.email)
+      console.log('[Checkout] ✓ Confirmation email sent')
     } catch (emailErr) {
       // Email failure must NEVER block the order response
       console.error('[Checkout] ⚠ Confirmation email failed (non-blocking):', (emailErr as Error)?.message || emailErr)
@@ -285,4 +369,3 @@ export async function POST(req: NextRequest) {
     return errorResponse(clientMessage, 500)
   }
 }
-

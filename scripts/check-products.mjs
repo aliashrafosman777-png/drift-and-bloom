@@ -1,7 +1,11 @@
 // Quick script to check what products exist in MongoDB Atlas
 import mongoose from 'mongoose'
 
-const MONGODB_URI = process.env.MONGODB_URI || 'mongodb+srv://aliashrafosman777_db_user:Ay1JbGwq9Ky8lvoE@driftnblooms.ukjvmrs.mongodb.net/driftandbloom?retryWrites=true&w=majority&appName=driftnblooms'
+const MONGODB_URI = process.env.MONGODB_URI
+
+if (!MONGODB_URI) {
+  throw new Error('MONGODB_URI is required. Credentials must never be embedded in source code.')
+}
 
 async function checkProducts() {
   try {

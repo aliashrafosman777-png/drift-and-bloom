@@ -5,6 +5,8 @@ node_modules
 .next
 dist
 out
+test-results
+playwright-report
 
 # Environment files (contain secrets)
 *.local
