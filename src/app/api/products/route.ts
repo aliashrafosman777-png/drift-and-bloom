@@ -5,6 +5,7 @@ import connectDB from '@/lib/mongodb'
 import {
   buildFishCategories,
   buildFishKey,
+  inferLegacyFishSubCategory,
   normalizeAquaticLifeType,
   normalizeFishSubCategory,
   statusIsStorefrontVisible,
@@ -38,8 +39,24 @@ function durableImageProjection() {
   return {
     $let: {
       vars: {
-        imageValue: { $ifNull: ['$image', ''] },
-        thumbnailValue: { $ifNull: ['$thumbnail', ''] },
+        // Legacy records may contain arrays/objects in image fields. MongoDB's
+        // $regexMatch throws for non-string input, so normalize the type before
+        // checking for embedded data URLs. A single malformed inactive record
+        // must never make the entire authenticated admin listing fail.
+        imageValue: {
+          $cond: [
+            { $eq: [{ $type: '$image' }, 'string'] },
+            '$image',
+            '',
+          ],
+        },
+        thumbnailValue: {
+          $cond: [
+            { $eq: [{ $type: '$thumbnail' }, 'string'] },
+            '$thumbnail',
+            '',
+          ],
+        },
       },
       in: {
         $cond: [
@@ -151,6 +168,28 @@ function canonicalizeFishProduct<T extends Record<string, unknown>>(data: T) {
   }
 }
 
+function canonicalizeLegacyFishProductForRead<T extends Record<string, unknown>>(data: T): T {
+  if (data.packageCategory !== 'fish') return data
+
+  const fishSubCategory = inferLegacyFishSubCategory(data)
+  if (!fishSubCategory) return data
+
+  const aquaticLifeType = normalizeAquaticLifeType(
+    data.aquaticLifeType,
+    data.category,
+    data.tags,
+  )
+  if (fishSubCategory === 'aquatic-life' && !aquaticLifeType) return data
+
+  return {
+    ...data,
+    fishSubCategory,
+    subCategory: fishSubCategory,
+    aquaticLifeType: fishSubCategory === 'aquatic-life' ? aquaticLifeType : '',
+    category: buildFishCategories(fishSubCategory, aquaticLifeType),
+  }
+}
+
 /**
  * GET /api/products
  * Public by default. `includeInactive=true` is admin-only.
@@ -214,7 +253,7 @@ export async function GET(req: NextRequest) {
     if (sort === 'newest') sortQuery = { createdAt: -1, _id: -1 }
     if (sort === 'best-selling') sortQuery = { reviewsCount: -1, _id: 1 }
 
-    const [products, total] = await Promise.all([
+    const [rawProducts, total] = await Promise.all([
       Product.aggregate([
         { $match: filter },
         { $sort: sortQuery },
@@ -224,6 +263,9 @@ export async function GET(req: NextRequest) {
       ]),
       Product.countDocuments(filter),
     ])
+    const products = packageCategory === 'fish'
+      ? rawProducts.map((product) => canonicalizeLegacyFishProductForRead(product))
+      : rawProducts
 
     return withNoStore(successResponse({
       products,
@@ -271,14 +313,19 @@ export async function POST(req: NextRequest) {
       thumbnail: String(data.thumbnail || data.image || (data.images as string[] | undefined)?.[0] || ''),
     })
     await product.save()
+    const persistedProduct = await Product.findById(product._id).lean()
+    if (!persistedProduct) {
+      throw new Error('PRODUCT_WRITE_VERIFICATION_FAILED')
+    }
     console.info('[products.create]', {
       requestId,
       productId: product._id.toString(),
       packageCategory: product.packageCategory || 'catalog',
       version: product.__v,
+      writeVerified: true,
     })
 
-    return withNoStore(successResponse(product.toObject(), 'Product created successfully.', 201))
+    return withNoStore(successResponse(persistedProduct, 'Product created successfully.', 201))
   } catch (error) {
     const mongoError = error as { code?: number }
     if (mongoError?.code === 11000) {

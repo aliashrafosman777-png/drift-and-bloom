@@ -98,6 +98,8 @@ export default function AdminFishProducts() {
           <p className="text-sm text-gray-500">
             {loading && fishProducts.length === 0
               ? 'Loading products from the database…'
+              : error && fishProducts.length === 0
+                ? 'Product counts unavailable'
               : `${fishProducts.length} products — ${aquariumCount} Aquariums, ${aquaticLifeCount} Aquatic Life`}
           </p>
         </div>
@@ -181,14 +183,20 @@ export default function AdminFishProducts() {
                   <td colSpan={6} className="py-16 text-center">
                     <Fish className="w-10 h-10 mx-auto mb-3 text-gray-300" />
                     <p className="text-sm text-gray-400">
-                      {search ? `No products match "${search}"` : 'No fish products yet'}
+                      {error
+                        ? 'Products could not be read from the database. Use Retry above.'
+                        : search
+                          ? `No products match "${search}"`
+                          : 'No fish products yet'}
                     </p>
-                    <button
-                      onClick={openAdd}
-                      className="mt-3 text-sm text-olive hover:text-olive-dark font-medium"
-                    >
-                      + Add your first fish product
-                    </button>
+                    {!error && !search && (
+                      <button
+                        onClick={openAdd}
+                        className="mt-3 text-sm text-olive hover:text-olive-dark font-medium"
+                      >
+                        + Add your first fish product
+                      </button>
+                    )}
                   </td>
                 </tr>
               ) : (

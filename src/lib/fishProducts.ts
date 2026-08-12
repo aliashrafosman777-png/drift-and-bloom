@@ -75,6 +75,30 @@ export function normalizeAquaticLifeType(
   return null
 }
 
+/**
+ * Recover the category of legacy database records whose original seed omitted
+ * fishSubCategory. New writes must still provide an explicit valid value; this
+ * helper is only for reading and migrating existing records.
+ */
+export function inferLegacyFishSubCategory(
+  product: Record<string, unknown>,
+): FishSubCategory | null {
+  const explicit = normalizeFishSubCategory(
+    product.fishSubCategory || product.subCategory,
+    product.category,
+  )
+  if (explicit) return explicit
+
+  if (normalizeAquaticLifeType(product.aquaticLifeType, product.category, product.tags)) {
+    return 'aquatic-life'
+  }
+
+  const identity = `${typeof product.name === 'string' ? product.name : ''} ${
+    typeof product.slug === 'string' ? product.slug : ''
+  }`
+  return /\b(aquarium|tank)s?\b/i.test(identity) ? 'aquariums' : null
+}
+
 export function buildFishKey(name: string): string {
   return name.normalize('NFKC').trim().toLocaleLowerCase('en-US').replace(/\s+/g, ' ')
 }
@@ -112,4 +136,3 @@ export function safeProductImage(value: unknown, fallback = '/assets/fishs.jpeg'
 export function statusIsStorefrontVisible(status: ProductStatus): boolean {
   return status === 'active'
 }
-

@@ -1,6 +1,12 @@
 import type { NextConfig } from 'next'
 
+const requestedDistDir = process.env.NEXT_DIST_DIR
+if (requestedDistDir && !/^[a-zA-Z0-9._-]+$/.test(requestedDistDir)) {
+  throw new Error('NEXT_DIST_DIR must be a directory name inside the project.')
+}
+
 const nextConfig: NextConfig = {
+  distDir: requestedDistDir || '.next',
   reactStrictMode: true,
   poweredByHeader: false,
   images: {

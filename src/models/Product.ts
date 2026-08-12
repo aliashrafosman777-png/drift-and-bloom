@@ -108,6 +108,7 @@ const ProductSchema = new Schema<IProduct>(
   },
   {
     timestamps: true,
+    collection: 'products',
   }
 )
 

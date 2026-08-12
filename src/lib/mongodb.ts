@@ -1,6 +1,7 @@
 import mongoose from 'mongoose'
 
 const MONGODB_URI = process.env.MONGODB_URI
+const DEFAULT_DATABASE_NAME = 'driftandbloom'
 
 if (!MONGODB_URI) {
   throw new Error(
@@ -46,8 +47,8 @@ export async function connectDB(): Promise<typeof mongoose> {
 
     cached.promise = mongoose.connect(MONGODB_URI as string, opts).then((m) => {
       const databaseName = m.connection.name
-      const expectedDatabase = process.env.EXPECTED_MONGODB_DATABASE
-      if (expectedDatabase && databaseName !== expectedDatabase) {
+      const expectedDatabase = process.env.EXPECTED_MONGODB_DATABASE || DEFAULT_DATABASE_NAME
+      if (databaseName !== expectedDatabase) {
         void m.disconnect()
         throw new Error('Connected MongoDB database does not match EXPECTED_MONGODB_DATABASE.')
       }

@@ -54,6 +54,11 @@ async function main() {
   }
 
   await mongoose.connect(process.env.MONGODB_URI, { serverSelectionTimeoutMS: 10_000 })
+  const databaseName = mongoose.connection.db.databaseName
+  const expectedDatabase = process.env.EXPECTED_MONGODB_DATABASE
+  if (!expectedDatabase || databaseName !== expectedDatabase) {
+    throw new Error('Migration requires EXPECTED_MONGODB_DATABASE to exactly match the connected database.')
+  }
   const collection = mongoose.connection.db.collection('products')
   const products = await collection.find({
     $or: [
@@ -148,7 +153,6 @@ async function main() {
     )
     await collection.createIndex(
       { packageCategory: 1, deletedAt: 1, isActive: 1, createdAt: -1 },
-      { name: 'fish_product_listing' },
     )
     console.log(`Applied ${plans.length} metadata updates without deleting or reseeding any records.`)
   }

@@ -17,9 +17,7 @@ import CategoryPills from "../components/build-package/CategoryPills";
 import ProductChoiceCard from "../components/build-package/ProductChoiceCard";
 import PackageSummary from "../components/build-package/PackageSummary";
 import FishSetupChooser from "../components/build-package/FishSetupChooser";
-import CustomizationPanel, {
-  createDefaultCustomizations,
-} from "../components/build-package/CustomizationPanel";
+
 import {
   buildPackageCategories,
   fishSubCategories,
@@ -56,7 +54,6 @@ const categoryAliases = {
 const getFlowSteps = (categoryId) => [
   "Choose Category",
   categoryId === "fish" ? "Choose Fish Setup" : "Choose Product",
-  "Customize",
   "Review Package",
   "Add Package to Cart",
 ];
@@ -73,7 +70,7 @@ function FlowProgress({ activeCategoryId }) {
   return (
     <div className="mb-8 rounded-[24px] border border-gold/15 bg-white/65 p-4 shadow-soft backdrop-blur sm:p-5">
       <div
-        className="grid grid-cols-1 gap-3 sm:grid-cols-5"
+        className="grid grid-cols-1 gap-3 sm:grid-cols-4"
         aria-label="Build package steps"
       >
         {flowSteps.map((step, index) => (
@@ -82,7 +79,7 @@ function FlowProgress({ activeCategoryId }) {
             className="flex items-center gap-3 sm:flex-col sm:items-start"
           >
             <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-olive text-sm text-cream shadow-soft">
-              {index < 3 ? <Check size={14} /> : index + 1}
+              {index < 2 ? <Check size={14} /> : index + 1}
             </span>
             <span>
               <span className="block text-[10px] uppercase tracking-label text-gold-dark">
@@ -102,9 +99,6 @@ function FlowProgress({ activeCategoryId }) {
 export default function BuildPackage() {
   const [activeIndex, setActiveIndex] = useState(0);
   const [fishSubCategory, setFishSubCategory] = useState(null);
-  const [customizations, setCustomizations] = useState(
-    createDefaultCustomizations,
-  );
   const searchParams = useSearchParams();
   const router = useRouter();
   const pathname = usePathname();
@@ -243,15 +237,7 @@ export default function BuildPackage() {
     scrollToBuilderTop();
   };
 
-  const handleCustomizationChange = (categoryId, groupId, value) => {
-    setCustomizations((current) => ({
-      ...current,
-      [categoryId]: {
-        ...(current[categoryId] || {}),
-        [groupId]: value,
-      },
-    }));
-  };
+
 
   const handleAddProduct = (product) => {
     addItem(product);
@@ -280,7 +266,6 @@ export default function BuildPackage() {
         productName: product.name,
         quantity,
         price: product.price,
-        customizations: customizations[categoryId] || {},
       };
     });
 
@@ -528,12 +513,7 @@ export default function BuildPackage() {
                 </motion.section>
               </AnimatePresence>
 
-              <CustomizationPanel
-                key={`customize-${activeCategory.id}`}
-                category={activeCategory}
-                values={customizations[activeCategory.id]}
-                onChange={handleCustomizationChange}
-              />
+
             </div>
 
             <div className="lg:order-none">
@@ -543,7 +523,6 @@ export default function BuildPackage() {
                 selectedList={selectedList}
                 total={total}
                 progress={{ ...progress, itemCount }}
-                customizations={customizations}
                 fishSubCategory={fishSubCategory}
                 onChangeCategory={(categoryId) => {
                   const index = displayCategories.findIndex(

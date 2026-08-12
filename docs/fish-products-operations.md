@@ -2,6 +2,14 @@
 
 Fish products use MongoDB as the only catalog source of truth. The admin page and the fish package builder both call `/api/products?packageCategory=fish`; admin requests add the authenticated `includeInactive=true` option. Mutable product responses are marked `private, no-store`, and the client refreshes after every confirmed mutation.
 
+The active application database is `driftandbloom`, and all catalog items are
+stored in its `products` collection. In Atlas, use
+`{ "packageCategory": "fish", "deletedAt": null }` to view current fish
+products. Do not write to the legacy `drift_and_bloom` database or its empty
+`fish product` collection: the current API, admin panel, package builder, and
+cart do not read them. A second fish-only collection would split the source of
+truth and recreate the consistency problem.
+
 ## Required production configuration
 
 - `MONGODB_URI`: the production Atlas URI, including the intended database name.

@@ -104,6 +104,17 @@ describe('fish products API persistence and consistency', () => {
     const aquarium = (await productJson(aquariumResponse)).data
     expect(aquarium._id).toMatch(/^[0-9a-f]{24}$/)
     expect(aquarium.fishSubCategory).toBe('aquariums')
+    const mongoose = (await import('mongoose')).default
+    const storedImmediately = await mongoose.connection.db.collection('products').findOne({
+      _id: new mongoose.Types.ObjectId(aquarium._id),
+    })
+    expect(storedImmediately).toMatchObject({
+      name: baseProduct.name,
+      packageCategory: 'fish',
+      fishSubCategory: 'aquariums',
+      category: ['fish', 'aquariums'],
+      status: 'active',
+    })
 
     const aquaticResponse = await createProduct(
       request('http://test/api/products', 'POST', {
@@ -189,7 +200,6 @@ describe('fish products API persistence and consistency', () => {
     )
     expect(deleted.status).toBe(200)
 
-    const mongoose = (await import('mongoose')).default
     await mongoose.disconnect()
     const cache = (globalThis as typeof globalThis & {
       _mongooseCache?: { conn: unknown | null; promise: Promise<unknown> | null }
@@ -221,5 +231,96 @@ describe('fish products API persistence and consistency', () => {
       }, true),
     )
     expect(response.status).toBe(400)
+  })
+
+  it('loads inactive legacy records even when their image fields have invalid types', async () => {
+    const mongoose = (await import('mongoose')).default
+    const products = mongoose.connection.db.collection('products')
+    const now = new Date()
+
+    await products.insertMany([
+      {
+        name: 'Legacy Object Image',
+        slug: 'legacy-object-image',
+        price: 1,
+        packageCategory: 'fish',
+        fishSubCategory: 'aquariums',
+        category: ['fish', 'aquariums'],
+        image: { url: '/legacy-object.jpg' },
+        thumbnail: [],
+        status: 'draft',
+        isActive: false,
+        deletedAt: null,
+        createdAt: now,
+        updatedAt: now,
+      },
+      {
+        name: 'Legacy Array Image',
+        slug: 'legacy-array-image',
+        price: 1,
+        packageCategory: 'fish',
+        fishSubCategory: 'aquatic-life',
+        aquaticLifeType: 'shrimp',
+        category: ['fish', 'aquatic-life', 'shrimp'],
+        image: ['/legacy-array.jpg'],
+        thumbnail: 123,
+        status: 'draft',
+        isActive: false,
+        deletedAt: null,
+        createdAt: now,
+        updatedAt: now,
+      },
+    ])
+
+    const adminResponse = await listProducts(
+      request(
+        'http://test/api/products?packageCategory=fish&limit=100&includeInactive=true',
+        'GET',
+        undefined,
+        true,
+      ),
+    )
+    expect(adminResponse.status).toBe(200)
+
+    const adminProducts = (await listJson(adminResponse)).data.products
+    const malformedProducts = adminProducts.filter((product) => product.name.startsWith('Legacy '))
+    expect(malformedProducts).toHaveLength(2)
+    expect(malformedProducts.every((product) => product.image === '')).toBe(true)
+
+    const publicResponse = await listProducts(
+      request('http://test/api/products?packageCategory=fish&limit=100'),
+    )
+    const publicProducts = (await listJson(publicResponse)).data.products
+    expect(publicProducts.some((product) => product.name.startsWith('Legacy '))).toBe(false)
+  })
+
+  it('normalizes unambiguous legacy aquarium metadata without failing the whole list', async () => {
+    const mongoose = (await import('mongoose')).default
+    const legacyId = new mongoose.Types.ObjectId()
+    await mongoose.connection.db.collection('products').insertOne({
+      _id: legacyId,
+      name: 'Legacy Premium Aquarium',
+      slug: `legacy-premium-aquarium-${legacyId}`,
+      price: 2200,
+      packageCategory: 'fish',
+      category: ['fish'],
+      subCategory: '',
+      isActive: true,
+      deletedAt: null,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    })
+
+    const response = await listProducts(
+      request('http://test/api/products?packageCategory=fish&includeInactive=true&limit=100', 'GET', undefined, true),
+    )
+    expect(response.status).toBe(200)
+    const legacy = (await listJson(response)).data.products.find(
+      (product) => product._id === legacyId.toString(),
+    )
+    expect(legacy).toMatchObject({
+      fishSubCategory: 'aquariums',
+      category: ['fish', 'aquariums'],
+    })
   })
 })

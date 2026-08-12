@@ -118,11 +118,16 @@ export async function POST(req: NextRequest) {
         201
       )
     }
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Verify code error:', error)
 
     // Handle duplicate key error (race condition)
-    if (error.code === 11000) {
+    if (
+      typeof error === 'object' &&
+      error !== null &&
+      'code' in error &&
+      error.code === 11000
+    ) {
       return errorResponse('An account with this email already exists.', 409)
     }
 

@@ -42,7 +42,7 @@ test('fish products persist across admin, browser contexts, private context, mut
     }, staleBrowserProduct)
   }
 
-  const adminPage = await browserA.newPage()
+  let adminPage = await browserA.newPage()
   const storefrontB = await browserB.newPage()
   const storefrontPrivate = await privateWindow.newPage()
   const browserErrors: string[] = []
@@ -86,6 +86,28 @@ test('fish products persist across admin, browser contexts, private context, mut
     await expect(page.getByText('Stale Browser Fish')).toHaveCount(0)
     await expect.poll(() => page.evaluate(() => localStorage.getItem('db_fish_products_v1'))).toBeNull()
   }
+
+  const controlUrl = process.env.E2E_CONTROL_URL
+  if (!controlUrl) throw new Error('E2E_CONTROL_URL was not initialized.')
+  const restartResponse = await fetch(`${controlUrl}/restart`, { method: 'POST' })
+  expect(restartResponse.status).toBe(204)
+
+  const afterRestartResponse = await adminPage.request.get(
+    '/api/products?packageCategory=fish&includeInactive=true&limit=100',
+    { headers: headers() },
+  )
+  expect(afterRestartResponse.status()).toBe(200)
+  expect((await afterRestartResponse.json()).data.products.map((product: { _id: string }) => product._id).sort()).toEqual(
+    [createdAquarium._id, createdLife._id].sort(),
+  )
+  await adminPage.close()
+  adminPage = await browserA.newPage()
+  adminPage.on('pageerror', (error) => browserErrors.push(error.message))
+  adminPage.on('console', (message) => {
+    if (message.type() === 'error') browserErrors.push(message.text())
+  })
+  await adminPage.goto('/admin/fish-products')
+  await expect(adminPage.getByText('2 products — 1 Aquariums, 1 Aquatic Life')).toBeVisible()
 
   const updatedResponse = await adminPage.request.put(`/api/products/${createdAquarium._id}`, {
     headers: headers(),

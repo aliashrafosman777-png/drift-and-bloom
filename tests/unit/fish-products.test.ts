@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   buildFishCategories,
   buildFishKey,
+  inferLegacyFishSubCategory,
   normalizeAquaticLifeType,
   normalizeFishSubCategory,
   safeProductImage,
@@ -20,6 +21,12 @@ describe('fish product canonicalization', () => {
     expect(normalizeAquaticLifeType('unknown')).toBeNull()
   })
 
+  it('recovers only unambiguous legacy fish sub-categories', () => {
+    expect(inferLegacyFishSubCategory({ name: 'Premium Aquarium', category: ['fish'] })).toBe('aquariums')
+    expect(inferLegacyFishSubCategory({ name: 'Blue Shrimp', tags: ['Shrimp'] })).toBe('aquatic-life')
+    expect(inferLegacyFishSubCategory({ name: 'Mystery Product', category: ['fish'] })).toBeNull()
+  })
+
   it('builds one canonical category representation', () => {
     expect(buildFishCategories('aquariums', null)).toEqual(['fish', 'aquariums'])
     expect(buildFishCategories('aquatic-life', 'shrimp')).toEqual(['fish', 'aquatic-life', 'shrimp'])
@@ -35,4 +42,3 @@ describe('fish product canonicalization', () => {
     expect(safeProductImage('https://res.cloudinary.com/example/image.jpg')).toContain('cloudinary.com')
   })
 })
-

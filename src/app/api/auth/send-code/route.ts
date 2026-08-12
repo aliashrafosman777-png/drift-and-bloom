@@ -61,11 +61,12 @@ export async function POST(req: NextRequest) {
       },
       'Verification code sent to your email.'
     )
-  } catch (error: any) {
+  } catch (error: unknown) {
+    const err = error instanceof Error ? error : new Error('Unknown send-code error')
     console.error('Send code error:', {
-      message: error?.message,
-      name: error?.name,
-      stack: error?.stack?.slice(0, 500),
+      message: err.message,
+      name: err.name,
+      stack: err.stack?.slice(0, 500),
     })
     return errorResponse('Failed to send verification code.', 500)
   }
