@@ -179,6 +179,16 @@ export default function Support() {
           <Stagger className="grid grid-cols-1 sm:grid-cols-2 gap-4 items-start">
             {FAQS.map((f, i) => <FAQItem key={f.q} id={i} question={f.q} answer={f.a} />)}
           </Stagger>
+          <div className="flex justify-center mt-8 sm:mt-10">
+            <Button
+              href="/Drift_and_Bloom_FAQs.pdf"
+              target="_blank"
+              rel="noopener noreferrer"
+              variant="outline"
+            >
+              VIEW ALL FAQs
+            </Button>
+          </div>
         </Container>
       </section>
 

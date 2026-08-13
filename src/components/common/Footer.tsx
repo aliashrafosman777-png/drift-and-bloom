@@ -125,7 +125,14 @@ export default function Footer() {
         <div className="border-t border-cream/15 mt-10 pt-6 flex flex-col sm:flex-row items-center justify-between gap-3">
           <p className="text-xs text-cream/50">© {new Date().getFullYear()} Drift &amp; Bloom. All rights reserved.</p>
           <div className="flex items-center gap-5">
-            <Link href="/support" className="text-xs text-cream/50 transition duration-300 hover:text-cream">Privacy Policy</Link>
+            <a
+              href="/Drift_and_Bloom_All_Website_Policies.pdf#page=21"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-xs text-cream/50 transition duration-300 hover:text-cream"
+            >
+              Privacy Policy
+            </a>
             <Link href="/support" className="text-xs text-cream/50 transition duration-300 hover:text-cream">Terms of Service</Link>
             <a href="#top" aria-label="Back to top" className="w-8 h-8 flex items-center justify-center rounded-full bg-cream/10 text-cream hover:bg-cream hover:text-olive transition duration-300 hover:scale-110">
               <FiArrowUp size={14} />
