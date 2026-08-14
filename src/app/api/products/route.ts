@@ -85,6 +85,60 @@ function durableImageProjection() {
   }
 }
 
+function sanitizedStringArrayProjection(field: string, rejectDataUrls = false, preserveEmpty = false) {
+  const strings = {
+    $map: {
+      input: { $cond: [{ $isArray: field }, field, []] },
+      as: 'value',
+      in: {
+        $cond: [
+          { $eq: [{ $type: '$$value' }, 'string'] },
+          '$$value',
+          '',
+        ],
+      },
+    },
+  }
+  if (preserveEmpty) return strings
+  return {
+    $filter: {
+      input: strings,
+      as: 'value',
+      cond: rejectDataUrls
+        ? {
+            $and: [
+              { $ne: ['$$value', ''] },
+              { $not: [{ $regexMatch: { input: '$$value', regex: DATA_URL_PATTERN, options: 'i' } }] },
+            ],
+          }
+        : { $ne: ['$$value', ''] },
+    },
+  }
+}
+
+async function attachAdminMedia(products: Record<string, unknown>[]) {
+  const ids = products.map((product) => product._id).filter(Boolean)
+  if (!ids.length) return products
+
+  // Fetch media only after the lightweight list has been sorted and paginated.
+  // This preserves the protection against oversized legacy embedded image data.
+  const media = await Product.aggregate([
+    { $match: { _id: { $in: ids } } },
+    {
+      $project: {
+        gallery: sanitizedStringArrayProjection('$gallery', true),
+        images: sanitizedStringArrayProjection('$images', true),
+        imagePublicIds: sanitizedStringArrayProjection('$imagePublicIds', false, true),
+      },
+    },
+  ])
+  const mediaById = new Map(media.map((item) => [String(item._id), item]))
+  return products.map((product) => {
+    const item = mediaById.get(String(product._id))
+    return item ? { ...product, gallery: item.gallery, images: item.images, imagePublicIds: item.imagePublicIds } : product
+  })
+}
+
 const LIST_PROJECTION = {
   name: 1,
   slug: 1,
@@ -286,9 +340,12 @@ export async function GET(req: NextRequest) {
       ]).allowDiskUse(true),
       Product.countDocuments(filter),
     ])
-    const products = packageCategory === 'fish'
-      ? rawProducts.map((product) => canonicalizeLegacyFishProductForRead(product))
+    const productsWithMedia = includeInactive
+      ? await attachAdminMedia(rawProducts)
       : rawProducts
+    const products = packageCategory === 'fish'
+      ? productsWithMedia.map((product) => canonicalizeLegacyFishProductForRead(product))
+      : productsWithMedia
 
     return withNoStore(successResponse({
       products,

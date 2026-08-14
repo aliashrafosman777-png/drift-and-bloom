@@ -7,6 +7,9 @@ let listProducts: typeof import('@/app/api/products/route').GET
 let createProduct: typeof import('@/app/api/products/route').POST
 let updateProduct: typeof import('@/app/api/products/[id]/route').PUT
 let deleteProduct: typeof import('@/app/api/products/[id]/route').DELETE
+let uploadImage: typeof import('@/app/api/upload/route').POST
+let deleteUpload: typeof import('@/app/api/upload/route').DELETE
+let getImage: typeof import('@/app/api/images/[id]/route').GET
 
 type TestProduct = {
   _id: string
@@ -40,6 +43,21 @@ async function productJson(response: Response) {
 
 async function listJson(response: Response) {
   return response.json() as Promise<{ data: { products: TestProduct[] } }>
+}
+
+const onePixelPng = Buffer.from(
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=',
+  'base64',
+)
+
+function uploadRequest(bytes = onePixelPng, authenticated = true, type = 'image/png') {
+  const body = new FormData()
+  body.append('file', new File([bytes], 'test-image.png', { type }))
+  return new NextRequest('http://test/api/upload', {
+    method: 'POST',
+    headers: authenticated ? { Authorization: `Bearer ${token}` } : {},
+    body,
+  })
 }
 
 const baseProduct = {
@@ -76,11 +94,16 @@ describe('fish products API persistence and consistency', () => {
 
     const collectionRoute = await import('@/app/api/products/route')
     const itemRoute = await import('@/app/api/products/[id]/route')
+    const uploadRoute = await import('@/app/api/upload/route')
+    const imageRoute = await import('@/app/api/images/[id]/route')
     const auth = await import('@/lib/auth')
     listProducts = collectionRoute.GET
     createProduct = collectionRoute.POST
     updateProduct = itemRoute.PUT
     deleteProduct = itemRoute.DELETE
+    uploadImage = uploadRoute.POST
+    deleteUpload = uploadRoute.DELETE
+    getImage = imageRoute.GET
     token = auth.signToken('507f1f77bcf86cd799439011', 'admin')
   })
 
@@ -236,6 +259,135 @@ describe('fish products API persistence and consistency', () => {
       }, true),
     )
     expect(response.status).toBe(400)
+  })
+
+  it('persists uploaded images through create, edit, refresh, restart, and delete', async () => {
+    expect((await uploadImage(uploadRequest(onePixelPng, false))).status).toBe(401)
+    expect((await uploadImage(uploadRequest(Buffer.from('not-an-image')))).status).toBe(400)
+
+    const firstUploadResponse = await uploadImage(uploadRequest())
+    expect(firstUploadResponse.status).toBe(201)
+    const firstUpload = (await firstUploadResponse.json()).data as {
+      url: string
+      publicId: string
+      bytes: number
+      contentType: string
+    }
+    expect(firstUpload.url).toMatch(/^\/api\/images\/[0-9a-f]{24}$/)
+    expect(firstUpload.publicId).toMatch(/^mongodb:[0-9a-f]{24}$/)
+    expect(firstUpload.bytes).toBe(onePixelPng.length)
+    expect(firstUpload.contentType).toBe('image/png')
+
+    const firstImageId = firstUpload.url.split('/').pop() as string
+    const firstRead = await getImage(
+      request(`http://test${firstUpload.url}`),
+      { params: Promise.resolve({ id: firstImageId }) },
+    )
+    expect(firstRead.status).toBe(200)
+    expect(firstRead.headers.get('content-type')).toBe('image/png')
+    expect(firstRead.headers.get('cache-control')).toContain('immutable')
+    expect(Buffer.from(await firstRead.arrayBuffer())).toEqual(onePixelPng)
+
+    const conditionalRead = await getImage(
+      new NextRequest(`http://test${firstUpload.url}`, {
+        headers: { 'If-None-Match': `"${firstImageId}"` },
+      }),
+      { params: Promise.resolve({ id: firstImageId }) },
+    )
+    expect(conditionalRead.status).toBe(304)
+
+    const createResponse = await createProduct(
+      request('http://test/api/products', 'POST', {
+        ...baseProduct,
+        name: 'Database Image Aquarium',
+        image: firstUpload.url,
+        thumbnail: firstUpload.url,
+        images: [firstUpload.url],
+        imagePublicIds: [firstUpload.publicId],
+      }, true),
+    )
+    expect(createResponse.status).toBe(201)
+    const created = (await productJson(createResponse)).data
+
+    const protectedDelete = await deleteUpload(request(
+      `http://test/api/upload?publicId=${encodeURIComponent(firstUpload.publicId)}`,
+      'DELETE',
+      undefined,
+      true,
+    ))
+    expect(protectedDelete.status).toBe(409)
+
+    const adminList = await listProducts(request(
+      'http://test/api/products?packageCategory=fish&includeInactive=true&limit=100',
+      'GET',
+      undefined,
+      true,
+    ))
+    const listed = ((await adminList.json()).data.products as Array<{
+      _id: string
+      gallery: string[]
+      imagePublicIds: string[]
+    }>).find((product) => product._id === created._id)
+    expect(listed).toMatchObject({ gallery: [], imagePublicIds: [firstUpload.publicId] })
+
+    const secondUploadResponse = await uploadImage(uploadRequest())
+    expect(secondUploadResponse.status).toBe(201)
+    const secondUpload = (await secondUploadResponse.json()).data as {
+      url: string
+      publicId: string
+    }
+    const secondImageId = secondUpload.url.split('/').pop() as string
+
+    const updateResponse = await updateProduct(
+      request(`http://test/api/products/${created._id}`, 'PUT', {
+        image: secondUpload.url,
+        thumbnail: secondUpload.url,
+        images: [secondUpload.url],
+        gallery: [],
+        imagePublicIds: [secondUpload.publicId],
+        version: created.__v,
+      }, true),
+      { params: Promise.resolve({ id: created._id }) },
+    )
+    expect(updateResponse.status).toBe(200)
+    const updated = (await productJson(updateResponse)).data
+
+    expect((await getImage(
+      request(`http://test${firstUpload.url}`),
+      { params: Promise.resolve({ id: firstImageId }) },
+    )).status).toBe(404)
+
+    const mongoose = (await import('mongoose')).default
+    await mongoose.disconnect()
+    const cache = (globalThis as typeof globalThis & {
+      _mongooseCache?: { conn: unknown | null; promise: Promise<unknown> | null }
+    })._mongooseCache
+    if (cache) { cache.conn = null; cache.promise = null }
+
+    expect((await getImage(
+      request(`http://test${secondUpload.url}`),
+      { params: Promise.resolve({ id: secondImageId }) },
+    )).status).toBe(200)
+
+    const deleteResponse = await deleteProduct(
+      request(`http://test/api/products/${updated._id}?version=${updated.__v}`, 'DELETE', undefined, true),
+      { params: Promise.resolve({ id: updated._id }) },
+    )
+    expect(deleteResponse.status).toBe(200)
+    expect((await getImage(
+      request(`http://test${secondUpload.url}`),
+      { params: Promise.resolve({ id: secondImageId }) },
+    )).status).toBe(404)
+
+    const unusedUploadResponse = await uploadImage(uploadRequest())
+    const unusedUpload = (await unusedUploadResponse.json()).data as { url: string; publicId: string }
+    const unusedDelete = await deleteUpload(request(
+      `http://test/api/upload?publicId=${encodeURIComponent(unusedUpload.publicId)}`,
+      'DELETE',
+      undefined,
+      true,
+    ))
+    expect(unusedDelete.status).toBe(200)
   })
 
   it('loads inactive legacy records even when their image fields have invalid types', async () => {

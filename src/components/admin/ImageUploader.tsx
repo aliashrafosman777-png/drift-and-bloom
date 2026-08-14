@@ -7,10 +7,30 @@ import OptimizedImage from '../common/OptimizedImage'
 
 export default function ImageUploader({ images = [], onChange }) {
   const [dragging, setDragging] = useState(false)
+  const [fileError, setFileError] = useState('')
   const inputRef = useRef()
 
   const readFiles = (files) => {
-    const valid = Array.from(files).filter((f) => f.type.startsWith('image/'))
+    const allowedTypes = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/avif'])
+    const maxBytes = 4 * 1024 * 1024
+    const selected = Array.from(files || [])
+    const invalidType = selected.find((file) => !allowedTypes.has(file.type))
+    if (invalidType) {
+      setFileError('Use a JPEG, PNG, WebP, or AVIF image.')
+      return
+    }
+    const oversized = selected.find((file) => file.size > maxBytes)
+    if (oversized) {
+      setFileError(`${oversized.name} is larger than 4 MB.`)
+      return
+    }
+    if (images.length + selected.length > 8) {
+      setFileError('You can save up to 8 images per product.')
+      return
+    }
+
+    setFileError('')
+    const valid = selected
     valid.forEach((file) => {
       const reader = new FileReader()
       reader.onload = (e) => {
@@ -28,6 +48,7 @@ export default function ImageUploader({ images = [], onChange }) {
   }
 
   const handleRemove = (id) => {
+    setFileError('')
     onChange((prev) => prev.filter((img) => img.id !== id))
   }
 
@@ -63,16 +84,23 @@ export default function ImageUploader({ images = [], onChange }) {
         <p className="text-sm text-charcoal/60">
           <span className="text-olive font-medium">Click to upload</span> or drag & drop
         </p>
-        <p className="text-xs text-charcoal/35 mt-1">PNG, JPG, WEBP — up to 5 MB each</p>
+        <p className="text-xs text-charcoal/35 mt-1">PNG, JPG, WEBP, AVIF — up to 4 MB each</p>
         <input
           ref={inputRef}
           type="file"
           multiple
-          accept="image/*"
+          accept="image/jpeg,image/png,image/webp,image/avif"
           className="hidden"
-          onChange={(e) => readFiles(e.target.files)}
+          onChange={(e) => {
+            readFiles(e.target.files)
+            e.target.value = ''
+          }}
         />
       </div>
+
+      {fileError && (
+        <p role="alert" className="mt-2 text-xs text-red-500">{fileError}</p>
+      )}
 
       {/* Previews */}
       {images.length > 0 && (

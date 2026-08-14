@@ -2,6 +2,7 @@ import { randomUUID } from 'crypto'
 import { NextRequest, NextResponse } from 'next/server'
 import mongoose from 'mongoose'
 import connectDB from '@/lib/mongodb'
+import { deleteUnreferencedProductImages } from '@/lib/productImageStorage'
 import {
   buildFishCategories,
   buildFishKey,
@@ -35,6 +36,24 @@ function logServerError(operation: string, requestId: string, error: unknown) {
     errorCode: err?.code,
     message: err?.message || 'Unknown error',
   })
+}
+
+async function cleanupRemovedImages(requestId: string, publicIds: unknown) {
+  const ids = Array.isArray(publicIds)
+    ? publicIds.filter((value): value is string => typeof value === 'string' && value !== '')
+    : []
+  if (!ids.length) return
+
+  try {
+    const result = await deleteUnreferencedProductImages(ids)
+    if (result.deleted) {
+      console.info('[products.imageCleanup]', { requestId, deleted: result.deleted })
+    }
+  } catch (error) {
+    // The product mutation already committed. Log cleanup failures without
+    // incorrectly reporting that the product save itself failed.
+    logServerError('imageCleanup', requestId, error)
+  }
 }
 
 function serializeProduct(product: Record<string, unknown>) {
@@ -159,6 +178,12 @@ export async function PUT(req: NextRequest, { params }: RouteParams) {
       version: product.__v,
     })
 
+    const nextPublicIds = Array.isArray(product.imagePublicIds) ? product.imagePublicIds : []
+    const removedPublicIds = Array.isArray(existing.imagePublicIds)
+      ? existing.imagePublicIds.filter((publicId) => !nextPublicIds.includes(publicId))
+      : []
+    await cleanupRemovedImages(requestId, removedPublicIds)
+
     return withNoStore(successResponse(
       serializeProduct(product as unknown as Record<string, unknown>),
       'Product updated successfully.',
@@ -187,7 +212,7 @@ export async function DELETE(req: NextRequest, { params }: RouteParams) {
 
     await connectDB()
     const existing = await Product.findOne({ _id: id, deletedAt: null })
-      .select('_id packageCategory __v')
+      .select('_id packageCategory imagePublicIds __v')
       .lean()
     if (!existing) return withNoStore(errorResponse('Product not found.', 404))
 
@@ -222,6 +247,8 @@ export async function DELETE(req: NextRequest, { params }: RouteParams) {
       productId: id,
       version: product.__v,
     })
+
+    await cleanupRemovedImages(requestId, existing.imagePublicIds)
 
     return withNoStore(successResponse(null, 'Product deleted successfully.'))
   } catch (error) {

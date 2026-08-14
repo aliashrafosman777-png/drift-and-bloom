@@ -167,3 +167,98 @@ test('fish products persist across admin, browser contexts, private context, mut
   await browserB.close()
   await privateWindow.close()
 })
+
+test('admin can create and edit a fish product with durable database images', async ({ browser }) => {
+  const context = await browser.newContext()
+  await context.addInitScript((authToken) => {
+    localStorage.setItem('db_auth_token_v1', authToken)
+  }, token())
+  const page = await context.newPage()
+  const browserErrors: string[] = []
+  page.on('pageerror', (error) => browserErrors.push(error.message))
+  page.on('console', (message) => {
+    if (message.type() === 'error') browserErrors.push(message.text())
+  })
+
+  await page.goto('/admin/fish-products')
+  await page.getByRole('button', { name: 'Add Fish Product' }).click()
+  await page.getByLabel('Product Name').fill('UI Image Aquarium')
+  await page.getByLabel('Short Description').fill('Uploaded through the admin product form.')
+  await page.getByLabel('Price (EGP)').fill('725')
+  await page.getByLabel('Fish Sub-Category').selectOption('aquariums')
+  await page.getByRole('button', { name: 'Images' }).click()
+  await page.locator('input[type="file"]').setInputFiles({
+    name: 'first.png',
+    mimeType: 'image/png',
+    buffer: Buffer.from(
+      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=',
+      'base64',
+    ),
+  })
+  await page.getByRole('button', { name: 'Tags & Status' }).click()
+  await page.getByRole('button', { name: 'Add Product' }).click()
+  await expect(page.getByText('Fish product added successfully!')).toBeVisible()
+  await expect(page.getByRole('row').filter({ hasText: 'UI Image Aquarium' })).toBeVisible()
+
+  const createdListResponse = await page.request.get(
+    '/api/products?packageCategory=fish&includeInactive=true&limit=100',
+    { headers: headers() },
+  )
+  expect(createdListResponse.status()).toBe(200)
+  const created = ((await createdListResponse.json()).data.products as Array<{
+    _id: string
+    __v: number
+    name: string
+    image: string
+    imagePublicIds: string[]
+  }>).find((product) => product.name === 'UI Image Aquarium')
+  expect(created).toBeTruthy()
+  expect(created?.image).toMatch(/^\/api\/images\/[0-9a-f]{24}$/)
+  expect(created?.imagePublicIds).toHaveLength(1)
+  expect((await page.request.get(created!.image)).status()).toBe(200)
+
+  const row = page.getByRole('row').filter({ hasText: 'UI Image Aquarium' })
+  await row.getByTitle('Edit').click()
+  await page.getByRole('button', { name: 'Images' }).click()
+  await page.locator('input[type="file"]').setInputFiles({
+    name: 'replacement.png',
+    mimeType: 'image/png',
+    buffer: Buffer.from(
+      'iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAQAAABFaP0WAAAADUlEQVR42mNk+M/wHwAF/gL+N2rXJwAAAABJRU5ErkJggg==',
+      'base64',
+    ),
+  })
+  await page.getByTitle('Set as main').click({ force: true })
+  await page.getByTitle('Remove').last().click({ force: true })
+  await page.getByRole('button', { name: 'Tags & Status' }).click()
+  await page.getByRole('button', { name: 'Save Changes' }).click()
+  await expect(page.getByText('Fish product updated successfully!')).toBeVisible()
+
+  const updatedListResponse = await page.request.get(
+    '/api/products?packageCategory=fish&includeInactive=true&limit=100',
+    { headers: headers() },
+  )
+  const updated = ((await updatedListResponse.json()).data.products as Array<{
+    _id: string
+    __v: number
+    name: string
+    image: string
+    gallery: string[]
+    imagePublicIds: string[]
+  }>).find((product) => product._id === created!._id)
+  expect(updated?.image).not.toBe(created?.image)
+  expect(updated?.gallery).toEqual([])
+  expect(updated?.imagePublicIds).toHaveLength(1)
+  expect((await page.request.get(created!.image)).status()).toBe(404)
+  expect((await page.request.get(updated!.image)).status()).toBe(200)
+
+  const deleteResponse = await page.request.delete(
+    `/api/products/${updated!._id}?version=${updated!.__v}`,
+    { headers: headers() },
+  )
+  expect(deleteResponse.status()).toBe(200)
+  expect((await page.request.get(updated!.image)).status()).toBe(404)
+  expect(browserErrors).toEqual([])
+
+  await context.close()
+})

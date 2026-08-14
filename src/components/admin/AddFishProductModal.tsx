@@ -78,12 +78,15 @@ export default function AddFishProductModal({ onClose, editProduct = null }) {
     if (!isEditing || !editProduct) return []
     // Pre-populate images from existing product
     const existing = []
-    if (editProduct.image) existing.push({ id: 'main-' + Date.now(), preview: editProduct.image })
-    if (editProduct.gallery) {
-      editProduct.gallery.forEach((url, i) => {
-        existing.push({ id: `gallery-${i}-${Date.now()}`, preview: url })
+    const urls = [editProduct.image, ...(editProduct.gallery || [])].filter(Boolean)
+    urls.forEach((url, i) => {
+      existing.push({
+        id: `${i === 0 ? 'main' : 'gallery'}-${i}-${Date.now()}`,
+        preview: url,
+        url,
+        publicId: editProduct.imagePublicIds?.[i] || '',
       })
-    }
+    })
     return existing
   })
   const [tab,    setTab]    = useState('basic')

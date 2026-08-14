@@ -36,6 +36,7 @@ export type FishProduct = {
   shortDescription: string
   image: string
   gallery: string[]
+  imagePublicIds: string[]
   category: 'fish'
   categories: string[]
   subCategory: FishSubCategory
@@ -115,6 +116,9 @@ function normalizeApiProduct(raw: Record<string, any>): FishProduct {
     gallery: Array.isArray(raw.gallery)
       ? raw.gallery.filter((value: unknown) => typeof value === 'string' && !/^data:/i.test(value))
       : [],
+    imagePublicIds: Array.isArray(raw.imagePublicIds)
+      ? raw.imagePublicIds.map((value: unknown) => typeof value === 'string' ? value : '')
+      : [],
     category: 'fish',
     categories: buildFishCategories(fishSubCategory, aquaticLifeType),
     subCategory: fishSubCategory,
@@ -130,33 +134,59 @@ function normalizeApiProduct(raw: Record<string, any>): FishProduct {
   }
 }
 
-async function persistImages(images: any[]): Promise<{ urls: string[]; publicIds: string[] }> {
-  const persisted = await Promise.all((images || []).map(async (image) => {
-    const file = image?.file instanceof File ? image.file : null
-    if (file) {
-      const body = new FormData()
-      body.append('file', file)
-      const response = await apiFetch<{
-        url: string
-        publicId: string
-      }>('/api/upload', { method: 'POST', body })
-      return { url: response.data.url, publicId: response.data.publicId }
-    }
+type PersistedImages = {
+  urls: string[]
+  publicIds: string[]
+  uploadedPublicIds: string[]
+}
 
-    const url = typeof image === 'string' ? image : image?.url || image?.preview
-    if (typeof url !== 'string' || !url || /^data:/i.test(url)) {
-      throw new Error('An image could not be saved to durable storage. Please select it again.')
+async function cleanupUploadedImages(publicIds: string[]) {
+  await Promise.allSettled(publicIds.map((publicId) => apiFetch(
+    `/api/upload?publicId=${encodeURIComponent(publicId)}`,
+    { method: 'DELETE', cache: 'no-store' },
+  )))
+}
+
+async function persistImages(images: any[]): Promise<PersistedImages> {
+  const persisted: Array<{ url: string; publicId: string }> = []
+  const uploadedPublicIds: string[] = []
+
+  try {
+    // Upload in order so the image/public-id arrays always stay aligned and a
+    // partial failure can be compensated without leaving orphaned files.
+    for (const image of images || []) {
+      const file = image?.file instanceof File ? image.file : null
+      if (file) {
+        const body = new FormData()
+        body.append('file', file)
+        const response = await apiFetch<{
+          url: string
+          publicId: string
+        }>('/api/upload', { method: 'POST', cache: 'no-store', body })
+        persisted.push({ url: response.data.url, publicId: response.data.publicId })
+        uploadedPublicIds.push(response.data.publicId)
+        continue
+      }
+
+      const url = typeof image === 'string' ? image : image?.url || image?.preview
+      if (typeof url !== 'string' || !url || /^data:/i.test(url)) {
+        throw new Error('An image could not be saved to durable storage. Please select it again.')
+      }
+      persisted.push({ url, publicId: typeof image?.publicId === 'string' ? image.publicId : '' })
     }
-    return { url, publicId: image?.publicId || '' }
-  }))
+  } catch (error) {
+    await cleanupUploadedImages(uploadedPublicIds)
+    throw error
+  }
 
   return {
     urls: persisted.map((item) => item.url),
-    publicIds: persisted.map((item) => item.publicId).filter(Boolean),
+    publicIds: persisted.map((item) => item.publicId),
+    uploadedPublicIds,
   }
 }
 
-function makePayload(form: FishForm, images: { urls: string[]; publicIds: string[] }) {
+function makePayload(form: FishForm, images: PersistedImages) {
   const fishSubCategory = normalizeFishSubCategory(form.fishSubCategory)
   const aquaticLifeType = normalizeAquaticLifeType(form.aquaticLifeType)
   if (!fishSubCategory) throw new Error('Choose a valid fish sub-category.')
@@ -277,16 +307,21 @@ export function FishProductProvider({ children }: { children: React.ReactNode })
 
   const addFishProduct = useCallback(async (form: FishForm) => {
     const images = await persistImages(form.images || [])
-    const response = await apiFetch<Record<string, unknown>>('/api/products', {
-      method: 'POST',
-      cache: 'no-store',
-      body: JSON.stringify(makePayload(form, images)),
-    })
-    const created = normalizeApiProduct(response.data)
-    setFishProducts((current) => [created, ...current.filter((item) => item.id !== created.id)])
-    announceMutation()
-    await refreshFishProducts()
-    return created
+    try {
+      const response = await apiFetch<Record<string, unknown>>('/api/products', {
+        method: 'POST',
+        cache: 'no-store',
+        body: JSON.stringify(makePayload(form, images)),
+      })
+      const created = normalizeApiProduct(response.data)
+      setFishProducts((current) => [created, ...current.filter((item) => item.id !== created.id)])
+      announceMutation()
+      await refreshFishProducts()
+      return created
+    } catch (error) {
+      await cleanupUploadedImages(images.uploadedPublicIds)
+      throw error
+    }
   }, [announceMutation, refreshFishProducts])
 
   const updateFishProduct = useCallback(async (id: string, form: FishForm) => {
@@ -306,6 +341,7 @@ export function FishProductProvider({ children }: { children: React.ReactNode })
       await refreshFishProducts()
       return updated
     } catch (cause) {
+      await cleanupUploadedImages(images.uploadedPublicIds)
       await refreshFishProducts()
       throw cause
     }

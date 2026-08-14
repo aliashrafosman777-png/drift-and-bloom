@@ -49,7 +49,9 @@ export const createProductSchema = z.object({
   packageCategory: z.string().optional().default(''),
   fishSubCategory: z.enum(FISH_SUB_CATEGORIES).or(z.literal('')).optional().default(''),
   aquaticLifeType: z.enum(AQUATIC_LIFE_TYPES).or(z.literal('')).optional().default(''),
-  imagePublicIds: z.array(z.string().min(1)).max(8).optional().default([]),
+  // Parallel to `images`: empty entries represent legacy/external URLs that do
+  // not have a database storage identifier.
+  imagePublicIds: z.array(z.string().max(200)).max(8).optional().default([]),
 })
 
 export const updateProductSchema = createProductSchema.partial().extend({

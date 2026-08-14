@@ -79,7 +79,15 @@ export async function apiFetch<T = unknown>(
     headers,
   })
 
-  const json = await res.json() as ApiResponse<T>
+  let json: ApiResponse<T>
+  try {
+    json = await res.json() as ApiResponse<T>
+  } catch {
+    const message = res.status === 413
+      ? 'The selected image is too large. Maximum size is 4 MB.'
+      : `The server returned an invalid response (${res.status}). Please try again.`
+    throw new ApiError(message, res.status)
+  }
 
   if (!res.ok || !json.success) {
     throw new ApiError(json.message || 'Something went wrong', res.status)
