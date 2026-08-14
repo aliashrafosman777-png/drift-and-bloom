@@ -56,6 +56,11 @@ export async function POST(req: NextRequest) {
     const auth = authenticateAdmin(req)
     if (auth instanceof NextResponse) return withNoStore(auth)
 
+    const contentType = req.headers.get('content-type') || ''
+    if (!contentType.toLowerCase().startsWith('multipart/form-data')) {
+      return withNoStore(errorResponse('A multipart image upload is required.', 400))
+    }
+
     const contentLength = Number(req.headers.get('content-length') || 0)
     if (Number.isFinite(contentLength) && contentLength > MAX_PRODUCT_IMAGE_BYTES + 64 * 1024) {
       return withNoStore(errorResponse('Image is too large. Maximum size is 4 MB.', 413))

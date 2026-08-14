@@ -263,6 +263,7 @@ describe('fish products API persistence and consistency', () => {
 
   it('persists uploaded images through create, edit, refresh, restart, and delete', async () => {
     expect((await uploadImage(uploadRequest(onePixelPng, false))).status).toBe(401)
+    expect((await uploadImage(request('http://test/api/upload', 'POST', undefined, true))).status).toBe(400)
     expect((await uploadImage(uploadRequest(Buffer.from('not-an-image')))).status).toBe(400)
 
     const firstUploadResponse = await uploadImage(uploadRequest())
