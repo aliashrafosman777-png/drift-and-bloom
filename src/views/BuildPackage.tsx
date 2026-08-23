@@ -7,8 +7,6 @@ import {
   ArrowRight,
   Check,
   Leaf,
-  PackageCheck,
-  ShoppingBag,
   Sparkles,
 } from "lucide-react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
@@ -21,10 +19,10 @@ import FishSetupChooser from "../components/build-package/FishSetupChooser";
 import {
   buildPackageCategories,
   fishSubCategories,
-  packageBuilderProductsByCategory,
 } from "../data/products";
 import { usePackage } from "../context/PackageContext";
 import { useFishProducts } from "../context/FishProductContext";
+import { useCatalogProducts } from "../context/CatalogProductContext";
 import { useCart } from "../context/CartContext";
 import { useToast } from "../components/common/Toast";
 const packageIllustration = "/assets/package.png";
@@ -60,9 +58,9 @@ const getFlowSteps = (categoryId) => [
 
 const normalizeCategoryParam = (value) =>
   categoryAliases[
-    String(value || "")
-      .trim()
-      .toLowerCase()
+  String(value || "")
+    .trim()
+    .toLowerCase()
   ] || null;
 
 function FlowProgress({ activeCategoryId }) {
@@ -127,19 +125,19 @@ export default function BuildPackage() {
       buildPackageCategories.map((category) =>
         category.id === "fish"
           ? {
-              ...category,
-              emoji: (
-                <span className="flex h-10 w-10 items-center justify-center overflow-hidden rounded-full">
-                  <OptimizedImage
-                    src={fishIcon}
-                    alt=""
-                    aria-hidden="true"
-                    decoding="async"
-                    className="h-full w-full scale-125 object-contain mix-blend-multiply"
-                  />
-                </span>
-              ),
-            }
+            ...category,
+            emoji: (
+              <span className="flex h-10 w-10 items-center justify-center overflow-hidden rounded-full">
+                <OptimizedImage
+                  src={fishIcon}
+                  alt=""
+                  aria-hidden="true"
+                  decoding="async"
+                  className="h-full w-full scale-125 object-contain mix-blend-multiply"
+                />
+              </span>
+            ),
+          }
           : category,
       ),
     [],
@@ -156,14 +154,31 @@ export default function BuildPackage() {
     refreshFishProducts,
     getFishProductsBySubCategory,
   } = useFishProducts();
+  const {
+    catalogProducts,
+    loading: catalogProductsLoading,
+    error: catalogProductsError,
+    refreshCatalogProducts,
+    getBuilderProductsByType,
+  } = useCatalogProducts();
   const activeProducts = useMemo(
     () => {
       if (isFishCategory && fishSubCategory) {
         return getFishProductsBySubCategory(fishSubCategory, aquaticLifeFilter);
       }
-      return packageBuilderProductsByCategory[activeCategory.id] || [];
+      if (activeCategory.id === "candles" || activeCategory.id === "plants") {
+        return getBuilderProductsByType(activeCategory.id);
+      }
+      return [];
     },
-    [activeCategory.id, isFishCategory, fishSubCategory, aquaticLifeFilter, getFishProductsBySubCategory],
+    [
+      activeCategory.id,
+      isFishCategory,
+      fishSubCategory,
+      aquaticLifeFilter,
+      getFishProductsBySubCategory,
+      getBuilderProductsByType,
+    ],
   );
   const total = getTotal();
   const progress = getProgress();
@@ -171,7 +186,7 @@ export default function BuildPackage() {
   // Package selections may be restored from localStorage, but fish product data
   // is always reconciled against the current database response before use.
   useEffect(() => {
-    if (fishProductsLoading) return;
+    if (fishProductsLoading || fishProductsError) return;
     const activeFish = new Map(fishProducts.filter((product) => product.isActive).map((product) => [product.id, product]));
     selectedList.forEach(({ product, quantity }) => {
       if (product.category !== "fish") return;
@@ -189,7 +204,45 @@ export default function BuildPackage() {
         replaceItem(current, quantity);
       }
     });
-  }, [fishProducts, fishProductsLoading, removeItem, replaceItem, selectedList]);
+  }, [fishProducts, fishProductsError, fishProductsLoading, removeItem, replaceItem, selectedList]);
+
+  // Candle and Plant selections are also client-side draft state, but their
+  // identity, visibility, price, and content are reconciled with MongoDB.
+  useEffect(() => {
+    if (catalogProductsLoading || catalogProductsError) return;
+    const activeCatalog = new Map(
+      [
+        ...getBuilderProductsByType("candles"),
+        ...getBuilderProductsByType("plants"),
+      ].map((product) => [product.id, product]),
+    );
+
+    selectedList.forEach(({ product, quantity }) => {
+      if (product.category !== "candles" && product.category !== "plants") return;
+      const current = activeCatalog.get(product.id);
+      if (!current) {
+        removeItem(product.id);
+        return;
+      }
+      if (
+        product.version !== current.version ||
+        product.price !== current.price ||
+        product.name !== current.name ||
+        product.image !== current.image ||
+        product.category !== current.category
+      ) {
+        replaceItem(current, quantity);
+      }
+    });
+  }, [
+    catalogProducts,
+    catalogProductsError,
+    catalogProductsLoading,
+    getBuilderProductsByType,
+    removeItem,
+    replaceItem,
+    selectedList,
+  ]);
 
   const scrollToBuilderTop = () => {
     window.requestAnimationFrame(() => {
@@ -263,9 +316,12 @@ export default function BuildPackage() {
         productCategory: product.category,
         fishSubCategory: product.fishSubCategory || null,
         aquaticLifeType: product.aquaticLifeType || null,
+        productType: product.productType || product.category,
+        candleCategory: product.candleCategory || null,
         productName: product.name,
         quantity,
         price: product.price,
+        listPrice: product.listPrice || product.price,
       };
     });
 
@@ -461,6 +517,21 @@ export default function BuildPackage() {
                         Try again
                       </button>
                     </div>
+                  ) : !isFishCategory && catalogProductsLoading ? (
+                    <div className="rounded-2xl border border-charcoal/10 bg-white/60 px-6 py-12 text-center text-sm text-charcoal/60">
+                      Loading current {activeCategory.label.toLowerCase()} products…
+                    </div>
+                  ) : !isFishCategory && catalogProductsError ? (
+                    <div className="rounded-2xl border border-red-200 bg-red-50 px-6 py-10 text-center" role="alert">
+                      <p className="text-sm text-red-700">{activeCategory.label} products could not be loaded: {catalogProductsError}</p>
+                      <button
+                        type="button"
+                        onClick={() => void refreshCatalogProducts()}
+                        className="mt-4 rounded-full border border-red-300 px-4 py-2 text-xs font-medium text-red-700"
+                      >
+                        Try again
+                      </button>
+                    </div>
                   ) : showFishChooser ? (
                     <FishSetupChooser onSelect={handleFishSubCategorySelect} />
                   ) : (
@@ -480,11 +551,10 @@ export default function BuildPackage() {
                                 key={tab.id}
                                 type="button"
                                 onClick={() => setAquaticLifeFilter(tab.id)}
-                                className={`shrink-0 px-4 py-2 rounded-full text-xs font-medium border transition duration-200 ${
-                                  active
+                                className={`shrink-0 px-4 py-2 rounded-full text-xs font-medium border transition duration-200 ${active
                                     ? 'bg-olive text-cream border-olive shadow-soft'
                                     : 'bg-white/80 text-charcoal/70 border-charcoal/15 hover:border-gold/50'
-                                }`}
+                                  }`}
                               >
                                 {tab.label}
                               </button>
@@ -494,7 +564,11 @@ export default function BuildPackage() {
                       )}
                       {activeProducts.length === 0 ? (
                         <div className="text-center py-12 rounded-2xl border border-charcoal/10 bg-white/60">
-                          <p className="text-sm text-charcoal/60">No products found for this aquatic life category.</p>
+                          <p className="text-sm text-charcoal/60">
+                            {isFishCategory
+                              ? "No active products found for this fish category."
+                              : `No active ${activeCategory.label.toLowerCase()} products are available yet.`}
+                          </p>
                         </div>
                       ) : (
                         activeProducts.map((product) => (

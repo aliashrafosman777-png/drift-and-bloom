@@ -19,6 +19,10 @@ type TestProduct = {
   image: string
   fishSubCategory: string
   isActive: boolean
+  productType?: string
+  candleCategory?: string
+  category?: string[]
+  discountPrice?: number | null
 }
 
 function request(
@@ -75,6 +79,28 @@ const baseProduct = {
   image: '/assets/fishs.jpeg',
   thumbnail: '/assets/fishs.jpeg',
   images: ['/assets/fishs.jpeg'],
+  gallery: [],
+  status: 'active',
+  isActive: true,
+}
+
+const baseCandleProduct = {
+  name: 'Integration Essential Candle',
+  tagline: 'Database candle',
+  shortDescription: 'A candle stored by the integration suite.',
+  description: 'Database-backed Candle product.',
+  story: 'Created to verify the complete Candle workflow.',
+  price: 600,
+  discountPrice: 525,
+  category: ['candles', 'essential'],
+  subCategory: 'essential',
+  packageCategory: 'candles',
+  productType: 'candles',
+  candleCategory: 'essential',
+  tags: ['Integration'],
+  image: '/assets/candles.jpeg',
+  thumbnail: '/assets/candles.jpeg',
+  images: ['/assets/candles.jpeg'],
   gallery: [],
   status: 'active',
   isActive: true,
@@ -249,6 +275,166 @@ describe('fish products API persistence and consistency', () => {
       isActive: false,
     })
   })
+
+  it('persists validated Candle and Plant CRUD as one shared builder source', async () => {
+    const invalidCandle = await createProduct(request('http://test/api/products', 'POST', {
+      ...baseCandleProduct,
+      name: 'Invalid Category Candle',
+      candleCategory: '',
+      category: ['candles'],
+      subCategory: '',
+    }, true))
+    expect(invalidCandle.status).toBe(400)
+
+    const candleResponse = await createProduct(
+      request('http://test/api/products', 'POST', baseCandleProduct, true),
+    )
+    expect(candleResponse.status).toBe(201)
+    const candle = (await productJson(candleResponse)).data
+    expect(candle).toMatchObject({
+      productType: 'candles',
+      candleCategory: 'essential',
+      category: ['candles', 'essential'],
+      discountPrice: 525,
+    })
+
+    const plantResponse = await createProduct(request('http://test/api/products', 'POST', {
+      ...baseCandleProduct,
+      name: 'Integration Calm Plant',
+      price: 450,
+      discountPrice: null,
+      productType: 'plants',
+      packageCategory: 'plants',
+      candleCategory: 'art',
+      subCategory: 'art',
+      category: ['plants', 'art'],
+      image: '/assets/plants.jpeg',
+      thumbnail: '/assets/plants.jpeg',
+      images: ['/assets/plants.jpeg'],
+    }, true))
+    expect(plantResponse.status).toBe(201)
+    const plant = (await productJson(plantResponse)).data
+    expect(plant).toMatchObject({
+      productType: 'plants',
+      candleCategory: '',
+      category: ['plants'],
+    })
+
+    const mongoose = (await import('mongoose')).default
+    const stored = await mongoose.connection.db.collection('products').find({
+      _id: { $in: [candle._id, plant._id].map((id) => new mongoose.Types.ObjectId(id)) },
+    }).toArray()
+    expect(stored).toHaveLength(2)
+    expect(stored.find((product) => String(product._id) === plant._id)).toMatchObject({
+      packageCategory: 'plants',
+      productType: 'plants',
+      candleCategory: '',
+      subCategory: '',
+      category: ['plants'],
+    })
+
+    const browserA = await listProducts(request('http://test/api/products?productType=builder&limit=100'))
+    const browserB = await listProducts(request('http://test/api/products?productType=builder&limit=100'))
+    expect(browserA.headers.get('cache-control')).toContain('no-store')
+    const listA = (await listJson(browserA)).data.products
+    const listB = (await listJson(browserB)).data.products
+    expect(listA).toEqual(listB)
+    expect(listA.filter((product) => product.productType === 'candles')).toHaveLength(1)
+    expect(listA.filter((product) => product.productType === 'plants')).toHaveLength(1)
+
+    const predefinedPackages = await listProducts(request(
+      'http://test/api/products?excludePackageCategory=fish&excludeProductType=builder&limit=100',
+    ))
+    expect((await listJson(predefinedPackages)).data.products).toEqual([])
+
+    const invalidTypeFilter = await listProducts(request('http://test/api/products?productType=fish'))
+    expect(invalidTypeFilter.status).toBe(400)
+
+    const unauthorizedAdminList = await listProducts(
+      request('http://test/api/products?productType=builder&includeInactive=true&limit=100'),
+    )
+    expect(unauthorizedAdminList.status).toBe(401)
+
+    const duplicate = await createProduct(request('http://test/api/products', 'POST', {
+      ...baseCandleProduct,
+      name: '  INTEGRATION essential candle ',
+    }, true))
+    expect(duplicate.status).toBe(409)
+
+    const switchToPlantResponse = await updateProduct(
+      request(`http://test/api/products/${candle._id}`, 'PUT', {
+        productType: 'plants',
+        version: candle.__v,
+      }, true),
+      { params: Promise.resolve({ id: candle._id }) },
+    )
+    expect(switchToPlantResponse.status).toBe(200)
+    const switched = (await productJson(switchToPlantResponse)).data
+    expect(switched).toMatchObject({
+      productType: 'plants',
+      candleCategory: '',
+      category: ['plants'],
+    })
+
+    const staleEdit = await updateProduct(
+      request(`http://test/api/products/${candle._id}`, 'PUT', {
+        price: 700,
+        version: candle.__v,
+      }, true),
+      { params: Promise.resolve({ id: candle._id }) },
+    )
+    expect(staleEdit.status).toBe(409)
+
+    const deactivateResponse = await updateProduct(
+      request(`http://test/api/products/${plant._id}`, 'PUT', {
+        status: 'draft',
+        version: plant.__v,
+      }, true),
+      { params: Promise.resolve({ id: plant._id }) },
+    )
+    expect(deactivateResponse.status).toBe(200)
+    const deactivated = (await productJson(deactivateResponse)).data
+    expect(deactivated.isActive).toBe(false)
+
+    const publicAfterDeactivate = await listProducts(
+      request('http://test/api/products?productType=plants&limit=100'),
+    )
+    expect((await listJson(publicAfterDeactivate)).data.products.map((product) => product._id)).toEqual([candle._id])
+
+    await mongoose.disconnect()
+    const cache = (globalThis as typeof globalThis & {
+      _mongooseCache?: { conn: unknown | null; promise: Promise<unknown> | null }
+    })._mongooseCache
+    if (cache) { cache.conn = null; cache.promise = null }
+
+    const afterRestart = await listProducts(request(
+      'http://test/api/products?productType=builder&includeInactive=true&limit=100',
+      'GET',
+      undefined,
+      true,
+    ))
+    const persisted = (await listJson(afterRestart)).data.products
+    expect(persisted.map((product) => product._id).sort()).toEqual([candle._id, plant._id].sort())
+
+    const deletePlant = await deleteProduct(
+      request(`http://test/api/products/${plant._id}?version=${deactivated.__v}`, 'DELETE', undefined, true),
+      { params: Promise.resolve({ id: plant._id }) },
+    )
+    expect(deletePlant.status).toBe(200)
+    const deleteSwitched = await deleteProduct(
+      request(`http://test/api/products/${candle._id}?version=${switched.__v}`, 'DELETE', undefined, true),
+      { params: Promise.resolve({ id: candle._id }) },
+    )
+    expect(deleteSwitched.status).toBe(200)
+
+    const finalList = await listProducts(request(
+      'http://test/api/products?productType=builder&includeInactive=true&limit=100',
+      'GET',
+      undefined,
+      true,
+    ))
+    expect((await listJson(finalList)).data.products).toEqual([])
+  }, 180_000)
 
   it('rejects browser-local base64 image persistence', async () => {
     const response = await createProduct(
@@ -509,5 +695,5 @@ describe('fish products API persistence and consistency', () => {
     expect(response.status).toBe(200)
     const listedProducts = (await listJson(response)).data.products
     expect(listedProducts.filter((product) => product.name.startsWith('Oversized Legacy Product'))).toHaveLength(4)
-  }, 90_000)
+  }, 180_000)
 })

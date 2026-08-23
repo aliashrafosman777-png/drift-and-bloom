@@ -65,6 +65,9 @@ export default function ProductChoiceCard({ product, quantity = 0, onAdd, onIncr
         <div className="flex flex-col justify-between border-t border-charcoal/10 p-5 sm:p-7 md:border-l md:border-t-0">
           <div className="md:text-right">
             <p className="text-xs uppercase tracking-label text-charcoal/40">Price</p>
+            {product.listPrice && product.listPrice > product.price && (
+              <p className="mt-1 text-sm text-charcoal/40 line-through">EGP {product.listPrice.toLocaleString()}</p>
+            )}
             <p className="mt-1 font-serif text-2xl text-brown">EGP {product.price.toLocaleString()}</p>
           </div>
 

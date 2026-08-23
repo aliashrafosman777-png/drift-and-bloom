@@ -1,5 +1,6 @@
 import mongoose, { Schema, Document, Model } from 'mongoose'
 import type { ProductStatus } from '@/lib/fishProducts'
+import type { CandleCategory, CatalogProductType } from '@/lib/catalogProducts'
 
 export interface IPlantOption {
   name: string
@@ -38,6 +39,7 @@ export interface IProduct extends Document {
   status: ProductStatus
   deletedAt: Date | null
   fishKey: string | null
+  catalogKey: string | null
   imagePublicIds: string[]
   rating: number
   reviewsCount: number
@@ -45,6 +47,8 @@ export interface IProduct extends Document {
   shortDescription2: string
   story: string
   packageCategory: string
+  productType: CatalogProductType | ''
+  candleCategory: CandleCategory | ''
   fishSubCategory: string
   aquaticLifeType: string
   createdAt: Date
@@ -104,6 +108,18 @@ const ProductSchema = new Schema<IProduct>(
     fishSubCategory: { type: String, default: '' },
     aquaticLifeType: { type: String, default: '' },
     fishKey: { type: String, default: null },
+    catalogKey: { type: String, default: null },
+    productType: {
+      type: String,
+      enum: ['', 'candles', 'plants'],
+      default: '',
+      index: true,
+    },
+    candleCategory: {
+      type: String,
+      enum: ['', 'essential', 'signature', 'art'],
+      default: '',
+    },
     imagePublicIds: { type: [String], default: [] },
   },
   {
@@ -126,7 +142,16 @@ ProductSchema.index(
     name: 'unique_fish_product_name',
   },
 )
+ProductSchema.index(
+  { catalogKey: 1 },
+  {
+    unique: true,
+    partialFilterExpression: { catalogKey: { $type: 'string' } },
+    name: 'unique_catalog_product_name_per_type',
+  },
+)
 ProductSchema.index({ packageCategory: 1, deletedAt: 1, isActive: 1, createdAt: -1 })
+ProductSchema.index({ productType: 1, deletedAt: 1, isActive: 1, createdAt: -1 })
 
 const Product: Model<IProduct> =
   mongoose.models.Product || mongoose.model<IProduct>('Product', ProductSchema)

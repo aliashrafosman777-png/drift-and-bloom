@@ -16,6 +16,7 @@ import {
   ChevronRight,
   Bell,
   MessageSquare,
+  Leaf,
 } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import LoadingFallback from '../components/common/LoadingFallback'
@@ -23,6 +24,7 @@ import LoadingFallback from '../components/common/LoadingFallback'
 const navItems = [
   { name: 'Dashboard',     href: '/admin',               icon: LayoutDashboard, end: true },
   { name: 'Packages',      href: '/admin/products',      icon: Package },
+  { name: 'Candles & Plants', href: '/admin/candles-plants', icon: Leaf },
   { name: 'Fish Products', href: '/admin/fish-products',  icon: Fish },
   { name: 'Orders',        href: '/admin/orders',        icon: ShoppingCart },
   { name: 'Customers',     href: '/admin/customers',     icon: Users },

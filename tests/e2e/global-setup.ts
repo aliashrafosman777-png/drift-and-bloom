@@ -93,33 +93,66 @@ export default async function globalSetup() {
 
   const nextBin = path.join(process.cwd(), 'node_modules', 'next', 'dist', 'bin', 'next')
   let serverOutput = ''
-  const startServer = () => {
+  const appendServerOutput = (chunk: Buffer) => {
+    serverOutput = `${serverOutput}${chunk}`.slice(-12_000)
+  }
+  const serverEnv = {
+    ...process.env,
+    MONGODB_URI: mongoUri,
+    EXPECTED_MONGODB_DATABASE: databaseName,
+    JWT_SECRET: jwtSecret,
+    DATA_SOURCE_ID: 'e2e-isolated',
+    NEXT_PUBLIC_SITE_URL: 'http://127.0.0.1:3100',
+    NEXT_DIST_DIR: distDir,
+  }
+
+  const buildApplication = async () => {
     serverOutput = ''
-    const nextServer = spawn(process.execPath, [nextBin, 'dev', '--hostname', '127.0.0.1', '--port', '3100'], {
+    const build = spawn(process.execPath, [nextBin, 'build'], {
       cwd: process.cwd(),
-      env: {
-        ...process.env,
-        MONGODB_URI: mongoUri,
-        EXPECTED_MONGODB_DATABASE: databaseName,
-        JWT_SECRET: jwtSecret,
-        DATA_SOURCE_ID: 'e2e-isolated',
-        NEXT_PUBLIC_SITE_URL: 'http://127.0.0.1:3100',
-        NEXT_DIST_DIR: distDir,
-      },
+      env: serverEnv,
       stdio: ['ignore', 'pipe', 'pipe'],
       windowsHide: true,
     })
-    nextServer.stdout?.on('data', (chunk) => { serverOutput = `${serverOutput}${chunk}`.slice(-12_000) })
-    nextServer.stderr?.on('data', (chunk) => { serverOutput = `${serverOutput}${chunk}`.slice(-12_000) })
+    build.stdout?.on('data', appendServerOutput)
+    build.stderr?.on('data', appendServerOutput)
+    await new Promise<void>((resolve, reject) => {
+      build.once('error', reject)
+      build.once('exit', (code) => {
+        if (code === 0) resolve()
+        else reject(new Error(`Next.js E2E build failed with exit code ${code}.\n${serverOutput}`))
+      })
+    })
+  }
+
+  const startServer = () => {
+    serverOutput = ''
+    const nextServer = spawn(process.execPath, [
+      nextBin,
+      'start',
+      '--hostname',
+      '127.0.0.1',
+      '--port',
+      '3100',
+    ], {
+      cwd: process.cwd(),
+      env: serverEnv,
+      stdio: ['ignore', 'pipe', 'pipe'],
+      windowsHide: true,
+    })
+    nextServer.stdout?.on('data', appendServerOutput)
+    nextServer.stderr?.on('data', appendServerOutput)
     return nextServer
   }
 
-  let child = startServer()
+  let child: ChildProcess | null = null
 
   try {
+    await buildApplication()
+    child = startServer()
     await waitForServer(child, () => serverOutput)
   } catch (error) {
-    await stopServer(child)
+    if (child) await stopServer(child)
     await mongoose.connect(mongoUri)
     if (mongoose.connection.db.databaseName === databaseName && databaseName.startsWith('dbe2e_')) {
       await mongoose.connection.db.dropDatabase()
@@ -130,6 +163,9 @@ export default async function globalSetup() {
     throw error
   }
 
+  if (!child) throw new Error('Next.js E2E server did not start.')
+  let runningServer: ChildProcess = child
+
   let restartInProgress: Promise<void> | null = null
   const controlServer = createServer((request, response) => {
     if (request.method !== 'POST' || request.url !== '/restart') {
@@ -138,9 +174,9 @@ export default async function globalSetup() {
     }
 
     restartInProgress ??= (async () => {
-      await stopServer(child)
-      child = startServer()
-      await waitForServer(child, () => serverOutput)
+      await stopServer(runningServer)
+      runningServer = startServer()
+      await waitForServer(runningServer, () => serverOutput)
     })().finally(() => {
       restartInProgress = null
     })
@@ -166,7 +202,7 @@ export default async function globalSetup() {
     await new Promise<void>((resolve, reject) => {
       controlServer.close((error) => error ? reject(error) : resolve())
     })
-    await stopServer(child)
+    await stopServer(runningServer)
     await mongoose.connect(mongoUri)
     if (mongoose.connection.db.databaseName !== databaseName || !databaseName.startsWith('dbe2e_')) {
       throw new Error('Refusing to clean up an unexpected E2E database.')

@@ -10,7 +10,8 @@
     "type-check": "tsc --noEmit",
     "test": "vitest run tests/unit",
     "test:integration": "node --env-file=.env.local node_modules/vitest/vitest.mjs run tests/integration",
-    "test:e2e": "node --env-file=.env.local node_modules/@playwright/test/cli.js test"
+    "test:e2e": "node --env-file=.env.local node_modules/@playwright/test/cli.js test",
+    "migrate:builder-products": "node --env-file=.env.local scripts/migrate-builder-products.mjs"
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",

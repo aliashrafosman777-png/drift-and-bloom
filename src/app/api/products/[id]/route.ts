@@ -11,6 +11,12 @@ import {
   safeProductImage,
   statusIsStorefrontVisible,
 } from '@/lib/fishProducts'
+import {
+  canonicalizeCatalogProduct,
+  isCatalogProductRecord,
+  normalizeCatalogProductType,
+  safeCatalogProductImage,
+} from '@/lib/catalogProducts'
 import Product from '@/models/Product'
 import { authenticateAdmin } from '@/middleware/auth'
 import { updateProductSchema } from '@/validation/product'
@@ -58,7 +64,12 @@ async function cleanupRemovedImages(requestId: string, publicIds: unknown) {
 
 function serializeProduct(product: Record<string, unknown>) {
   const fish = product.packageCategory === 'fish'
-  const fallback = fish ? '/assets/fishs.jpeg' : '/assets/package.png'
+  const productType = normalizeCatalogProductType(product.productType || product.packageCategory)
+  const fallback = fish
+    ? '/assets/fishs.jpeg'
+    : productType
+      ? safeCatalogProductImage('', productType)
+      : '/assets/package.png'
   return {
     ...product,
     image: safeProductImage(product.image, fallback),
@@ -114,7 +125,8 @@ export async function PUT(req: NextRequest, { params }: RouteParams) {
       Object.entries(parsed.data).filter(([key]) => key !== 'version' && Object.hasOwn(body, key)),
     )
     const isFish = existing.packageCategory === 'fish'
-    if (isFish && version === undefined) {
+    const isCatalogProduct = isCatalogProductRecord(existing as unknown as Record<string, unknown>)
+    if ((isFish || isCatalogProduct) && version === undefined) {
       return withNoStore(errorResponse('The current product version is required.', 428))
     }
 
@@ -150,6 +162,37 @@ export async function PUT(req: NextRequest, { params }: RouteParams) {
       changes.fishKey = buildFishKey(String(merged.name))
       changes.status = status
       changes.isActive = statusIsStorefrontVisible(status)
+    } else if (
+      isCatalogProduct ||
+      normalizeCatalogProductType(changes.productType || changes.packageCategory)
+    ) {
+      try {
+        const canonical = canonicalizeCatalogProduct({ ...existing, ...changes })
+        changes.productType = canonical.productType
+        changes.candleCategory = canonical.candleCategory
+        changes.packageCategory = canonical.packageCategory
+        changes.subCategory = canonical.subCategory
+        changes.category = canonical.category
+        changes.catalogKey = canonical.catalogKey
+        changes.fishSubCategory = ''
+        changes.aquaticLifeType = ''
+        changes.fishKey = null
+        changes.discountPrice = canonical.discountPrice
+        changes.status = canonical.status
+        changes.isActive = canonical.isActive
+      } catch (error) {
+        const code = (error as Error).message
+        const message = code === 'INVALID_CANDLE_CATEGORY'
+          ? 'Candle products require an Essential, Signature, or Art category.'
+          : code === 'INVALID_CATALOG_REQUIRED_FIELDS'
+            ? 'Product name, short description, and a price greater than zero are required.'
+            : code === 'INVALID_CATALOG_IMAGE'
+              ? 'At least one durably stored product image is required.'
+              : code === 'INVALID_DISCOUNT_PRICE'
+                ? 'Discount price must be greater than zero and lower than the regular price.'
+                : 'Choose a valid Candles or Plants product type.'
+        return withNoStore(errorResponse(message, 400))
+      }
     } else if (changes.status) {
       changes.isActive = statusIsStorefrontVisible(
         changes.status as 'active' | 'draft' | 'out_of_stock',
@@ -191,7 +234,7 @@ export async function PUT(req: NextRequest, { params }: RouteParams) {
   } catch (error) {
     const mongoError = error as { code?: number }
     if (mongoError?.code === 11000) {
-      return withNoStore(errorResponse('A fish product with this name already exists.', 409))
+      return withNoStore(errorResponse('A product with this name already exists for the selected type.', 409))
     }
     logServerError('update', requestId, error)
     return withNoStore(errorResponse('Failed to update product.', 500))
@@ -218,7 +261,10 @@ export async function DELETE(req: NextRequest, { params }: RouteParams) {
 
     const rawVersion = new URL(req.url).searchParams.get('version')
     const version = rawVersion === null ? undefined : Number(rawVersion)
-    if (existing.packageCategory === 'fish' && (!Number.isInteger(version) || Number(version) < 0)) {
+    if (
+      (existing.packageCategory === 'fish' || isCatalogProductRecord(existing as unknown as Record<string, unknown>)) &&
+      (!Number.isInteger(version) || Number(version) < 0)
+    ) {
       return withNoStore(errorResponse('The current product version is required.', 428))
     }
 
@@ -228,7 +274,15 @@ export async function DELETE(req: NextRequest, { params }: RouteParams) {
     const product = await Product.findOneAndUpdate(
       query,
       {
-        $set: { deletedAt: new Date(), isActive: false, status: 'draft' },
+        $set: {
+          deletedAt: new Date(),
+          isActive: false,
+          status: 'draft',
+          // Release live-record duplicate keys while retaining the immutable
+          // ObjectId and full soft-deleted audit record.
+          fishKey: null,
+          catalogKey: null,
+        },
         $inc: { __v: 1 },
       },
       { returnDocument: 'after' },

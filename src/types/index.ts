@@ -39,6 +39,10 @@ export interface ProductType {
   reviews: number // alias for frontend compatibility
   story: string
   packageCategory: string
+  productType: 'candles' | 'plants' | ''
+  candleCategory: 'essential' | 'signature' | 'art' | ''
+  status: 'active' | 'draft' | 'out_of_stock'
+  version: number
   createdAt: string
   updatedAt: string
 }

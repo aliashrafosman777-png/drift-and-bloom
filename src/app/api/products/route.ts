@@ -10,6 +10,11 @@ import {
   normalizeFishSubCategory,
   statusIsStorefrontVisible,
 } from '@/lib/fishProducts'
+import {
+  CATALOG_PRODUCT_TYPES,
+  canonicalizeCatalogProduct,
+  normalizeCatalogProductType,
+} from '@/lib/catalogProducts'
 import Product from '@/models/Product'
 import { authenticateAdmin } from '@/middleware/auth'
 import { createProductSchema } from '@/validation/product'
@@ -171,6 +176,9 @@ const LIST_PROJECTION = {
   fishSubCategory: 1,
   aquaticLifeType: 1,
   fishKey: 1,
+  productType: 1,
+  candleCategory: 1,
+  catalogKey: 1,
   createdAt: 1,
   updatedAt: 1,
   __v: 1,
@@ -258,6 +266,21 @@ function canonicalizeLegacyFishProductForRead<T extends Record<string, unknown>>
   }
 }
 
+function catalogValidationMessage(error: unknown) {
+  switch ((error as Error).message) {
+    case 'INVALID_CANDLE_CATEGORY':
+      return 'Candle products require an Essential, Signature, or Art category.'
+    case 'INVALID_CATALOG_REQUIRED_FIELDS':
+      return 'Product name, short description, and a price greater than zero are required.'
+    case 'INVALID_CATALOG_IMAGE':
+      return 'At least one durably stored product image is required.'
+    case 'INVALID_DISCOUNT_PRICE':
+      return 'Discount price must be greater than zero and lower than the regular price.'
+    default:
+      return 'Choose a valid Candles or Plants product type.'
+  }
+}
+
 /**
  * GET /api/products
  * Public by default. `includeInactive=true` is admin-only.
@@ -316,8 +339,30 @@ export async function GET(req: NextRequest) {
     const packageCategory = searchParams.get('packageCategory')
     if (packageCategory) filter.packageCategory = packageCategory
 
+    const productType = searchParams.get('productType')
+    if (productType === 'builder') {
+      filter.productType = { $in: [...CATALOG_PRODUCT_TYPES] }
+    } else if (productType) {
+      const normalizedProductType = normalizeCatalogProductType(productType)
+      if (!normalizedProductType) {
+        return withNoStore(errorResponse('Choose a valid Candles or Plants product type.', 400))
+      }
+      filter.productType = normalizedProductType
+    }
+
     const excludePackageCategory = searchParams.get('excludePackageCategory')
     if (excludePackageCategory) filter.packageCategory = { $ne: excludePackageCategory }
+
+    const excludeProductType = searchParams.get('excludeProductType')
+    if (excludeProductType === 'builder') {
+      filter.productType = { $nin: [...CATALOG_PRODUCT_TYPES] }
+    } else if (excludeProductType) {
+      const normalizedExcludedType = normalizeCatalogProductType(excludeProductType)
+      if (!normalizedExcludedType) {
+        return withNoStore(errorResponse('Choose a valid Candles or Plants product type.', 400))
+      }
+      filter.productType = { $ne: normalizedExcludedType }
+    }
 
     const sort = searchParams.get('sort') || 'featured'
     let sortQuery: Record<string, 1 | -1> = { bestSeller: -1, rating: -1, createdAt: -1, _id: -1 }
@@ -371,16 +416,22 @@ export async function POST(req: NextRequest) {
 
     let data: Record<string, unknown>
     try {
-      data = canonicalizeFishProduct(parsed.data)
+      data = canonicalizeCatalogProduct(canonicalizeFishProduct(parsed.data))
     } catch (error) {
-      const message = (error as Error).message === 'INVALID_AQUATIC_LIFE_TYPE'
+      const errorCode = (error as Error).message
+      const message = errorCode === 'INVALID_AQUATIC_LIFE_TYPE'
         ? 'Aquatic Life products require a valid aquatic life type.'
-        : 'Fish products require a valid fish sub-category.'
+        : errorCode === 'INVALID_FISH_SUB_CATEGORY'
+          ? 'Fish products require a valid fish sub-category.'
+          : catalogValidationMessage(error)
       return withNoStore(errorResponse(message, 400))
     }
 
     if (data.fishKey && await Product.exists({ fishKey: data.fishKey })) {
       return withNoStore(errorResponse('A fish product with this name already exists.', 409))
+    }
+    if (data.catalogKey && await Product.exists({ catalogKey: data.catalogKey, deletedAt: null })) {
+      return withNoStore(errorResponse('A product with this name already exists for the selected type.', 409))
     }
 
     const baseSlug = slugify(String(data.name), { lower: true, strict: true })

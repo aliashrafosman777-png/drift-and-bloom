@@ -96,7 +96,7 @@ export function ProductProvider({ children }) {
     async function fetchProducts() {
       try {
         setLoading(true)
-        const res = await apiFetch('/api/products?limit=100&excludePackageCategory=fish', { cache: 'no-store' })
+        const res = await apiFetch('/api/products?limit=100&excludePackageCategory=fish&excludeProductType=builder', { cache: 'no-store' })
         if (!cancelled && res.data?.products?.length > 0) {
           setBaseProducts(res.data.products.map(normalizeProduct))
         }
@@ -112,8 +112,9 @@ export function ProductProvider({ children }) {
   }, [])
 
   // Catalog products (SEED packages + API DB packages + custom packages)
-  // NOTE: Fish products are intentionally EXCLUDED from this catalog.
-  // They only appear in the Build Package flow (/build-your-package).
+  // NOTE: Individual Fish, Candle, and Plant products are intentionally
+  // excluded. They belong in Build Your Package, not the predefined Packages
+  // catalog managed by this legacy context.
   const products = useMemo(() => {
     const map = new Map()
     // 1. Initial SEED packages (guarantees store is never empty!)
@@ -121,6 +122,7 @@ export function ProductProvider({ children }) {
       const norm = normalizeProduct(p)
       // Skip fish products — they belong in the builder, not the catalog
       if (norm?.category === 'fish' || norm?.packageCategory === 'fish') return
+      if (['candles', 'plants'].includes(norm?.productType || norm?.packageCategory)) return
       if (norm?.name) map.set(norm.name.trim().toLowerCase(), norm)
       else if (norm?.id) map.set(norm.id, norm)
     })
@@ -128,6 +130,7 @@ export function ProductProvider({ children }) {
     baseProducts.forEach((p) => {
       const norm = normalizeProduct(p)
       if (norm?.category === 'fish' || norm?.packageCategory === 'fish') return
+      if (['candles', 'plants'].includes(norm?.productType || norm?.packageCategory)) return
       const cats = norm?.categories || []
       if (cats.includes('fish') || cats.includes('aquariums') || cats.includes('aquatic-life')) return
       if (norm?.fishSubCategory) return
@@ -138,6 +141,7 @@ export function ProductProvider({ children }) {
     customProducts.forEach((p) => {
       const norm = normalizeProduct(p)
       if (norm?.category === 'fish' || norm?.packageCategory === 'fish') return
+      if (['candles', 'plants'].includes(norm?.productType || norm?.packageCategory)) return
       if (norm?.name) map.set(norm.name.trim().toLowerCase(), norm)
       else if (norm?.id) map.set(norm.id, norm)
     })

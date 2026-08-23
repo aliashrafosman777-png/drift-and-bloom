@@ -35,7 +35,12 @@ export async function GET(req: NextRequest) {
       ]),
       Order.countDocuments(),
       User.countDocuments({ role: 'customer' }),
-      Product.countDocuments({ isActive: true }),
+      Product.countDocuments({
+        isActive: true,
+        deletedAt: null,
+        packageCategory: { $ne: 'fish' },
+        productType: { $nin: ['candles', 'plants'] },
+      }),
       // Recent 5 orders
       Order.find()
         .populate('customer', 'firstName lastName email')

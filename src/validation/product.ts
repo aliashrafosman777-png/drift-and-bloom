@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import { AQUATIC_LIFE_TYPES, FISH_SUB_CATEGORIES } from '@/lib/fishProducts'
+import { CANDLE_CATEGORIES, CATALOG_PRODUCT_TYPES } from '@/lib/catalogProducts'
 
 const durableImageSchema = z.string().refine(
   (value) =>
@@ -47,6 +48,8 @@ export const createProductSchema = z.object({
   reviewsCount: z.number().int().min(0).optional().default(0),
   story: z.string().optional().default(''),
   packageCategory: z.string().optional().default(''),
+  productType: z.enum(CATALOG_PRODUCT_TYPES).or(z.literal('')).optional().default(''),
+  candleCategory: z.enum(CANDLE_CATEGORIES).or(z.literal('')).optional().default(''),
   fishSubCategory: z.enum(FISH_SUB_CATEGORIES).or(z.literal('')).optional().default(''),
   aquaticLifeType: z.enum(AQUATIC_LIFE_TYPES).or(z.literal('')).optional().default(''),
   // Parallel to `images`: empty entries represent legacy/external URLs that do
