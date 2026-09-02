@@ -1,7 +1,6 @@
-// @ts-nocheck
 "use client"
 
-import React, { useMemo, useState, useEffect } from "react";
+import React, { useMemo, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import Container from "../components/common/Container";
@@ -26,24 +25,17 @@ const SORT_OPTIONS = [
 ];
 
 export default function Packages() {
-  const { products } = useProducts();
+  const { products, ready, error, refreshProducts } = useProducts();
   const searchParams = useSearchParams();
   const router = useRouter();
   const pathname = usePathname();
-  const initialCategory = searchParams.get("category") || "all";
+  const activeCategory = searchParams.get("category") || "all";
 
   const [search, setSearch] = useState("");
-  const [activeCategory, setActiveCategory] = useState(initialCategory);
   const [sort, setSort] = useState("featured");
 
-  useEffect(() => {
-    const cat = searchParams.get("category");
-    if (cat) setActiveCategory(cat);
-  }, [searchParams]);
-
-  const handleCategoryChange = (id) => {
+  const handleCategoryChange = (id: string) => {
     const nextCategory = id === activeCategory ? "all" : id;
-    setActiveCategory(nextCategory);
     const params = new URLSearchParams(searchParams.toString());
     if (nextCategory === "all") params.delete("category");
     else params.set("category", nextCategory);
@@ -140,7 +132,18 @@ export default function Packages() {
             />
           </Reveal>
 
-          <AnimatePresence mode="wait">
+          {error && (
+            <div role="alert" className="mb-8 rounded-2xl border border-red-200 bg-red-50 px-5 py-4 text-center text-sm text-red-700">
+              Packages could not be loaded from the database. {error}{' '}
+              <button type="button" onClick={() => void refreshProducts()} className="font-medium underline">
+                Try again
+              </button>
+            </div>
+          )}
+
+          {!ready ? (
+            <div className="py-20 text-center text-sm text-charcoal/50">Loading packages…</div>
+          ) : !error && <AnimatePresence mode="wait">
             {filtered.length === 0 ? (
               <motion.div
                 key="empty"
@@ -150,7 +153,7 @@ export default function Packages() {
                 className="text-center py-20 rounded-3xl border border-gold/15 bg-white/60"
               >
                 <p className="text-charcoal/60">
-                  No packages match "{search}". Try a different search or
+                  No packages match &quot;{search}&quot;. Try a different search or
                   category.
                 </p>
               </motion.div>
@@ -164,7 +167,7 @@ export default function Packages() {
                 ))}
               </Stagger>
             )}
-          </AnimatePresence>
+          </AnimatePresence>}
         </Container>
       </section>
 

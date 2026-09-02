@@ -1,11 +1,16 @@
-// @ts-nocheck
 "use client"
 
 import React from 'react'
 import { Star, Eye } from 'lucide-react'
 const packageFallbackImage = "/assets/package.png";
 import OptimizedImage from '../common/OptimizedImage'
-export default function ProductPreview({ form, images }) {
+import type { ProductImageInput } from '@/lib/clientProductImages'
+import type { PackageProductForm } from '@/context/ProductContext'
+
+export default function ProductPreview({ form, images }: {
+  form: PackageProductForm
+  images: ProductImageInput[]
+}) {
   const mainImage = images?.[0]?.preview || packageFallbackImage
 
   const name     = form.name     || 'Package Name'

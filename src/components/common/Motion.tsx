@@ -1,4 +1,3 @@
-// @ts-nocheck
 "use client"
 
 import React from 'react'
@@ -70,22 +69,24 @@ export function Reveal({
   )
 }
 
-export const Stagger = React.forwardRef(function Stagger({ as = 'div', children, className = '', ...props }, ref) {
-  const Component = motion[as] || motion.div
+type StaggerProps = React.PropsWithChildren<{
+  className?: string
+}>
+
+export const Stagger: React.ForwardRefExoticComponent<StaggerProps & React.RefAttributes<HTMLDivElement>> = React.forwardRef(function Stagger({ children, className = '' }, ref) {
   const shouldReduceMotion = useReducedMotion()
 
   return (
-    <Component
+    <motion.div
       ref={ref}
       initial={shouldReduceMotion ? false : 'hidden'}
       whileInView={shouldReduceMotion ? undefined : 'visible'}
       viewport={{ once: true, margin: '-40px' }}
       variants={staggerContainer}
       className={className}
-      {...props}
     >
       {children}
-    </Component>
+    </motion.div>
   )
 })
 

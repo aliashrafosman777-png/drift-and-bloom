@@ -1,4 +1,3 @@
-// @ts-nocheck
 "use client"
 
 import React, { useEffect, useRef, useState } from 'react'
@@ -7,9 +6,12 @@ import {
   FormInput, FormTextarea, FormSelect,
   FormToggle, FormTagInput, FormSection,
 } from './FormFields'
+import type { FormFieldChangeEvent } from './FormFields'
 import ImageUploader from './ImageUploader'
 import ProductPreview from './ProductPreview'
 import { useProducts } from '../../context/ProductContext'
+import type { PackageProduct, PackageProductForm } from '../../context/ProductContext'
+import type { ProductImageInput } from '@/lib/clientProductImages'
 
 // ── Select option lists ──────────────────────────────────────────────────────
 const CATEGORY_OPTIONS = [
@@ -66,7 +68,7 @@ const WATERING_OPTIONS = [
 ]
 
 // ── Initial form state ────────────────────────────────────────────────────────
-const EMPTY_FORM = {
+const EMPTY_FORM: PackageProductForm = {
   name:          '',
   tagline:       '',
   description:   '',
@@ -88,40 +90,79 @@ const EMPTY_FORM = {
 }
 
 // ── Validation ────────────────────────────────────────────────────────────────
-function validate(form, images) {
-  const errors = {}
+type ValidationKey = 'name' | 'tagline' | 'price' | 'discountPrice' | 'images'
+type ValidationErrors = Partial<Record<ValidationKey, string>>
+type TabId = 'basic' | 'images' | 'details' | 'tags'
+type FormChangeEvent = React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement> | FormFieldChangeEvent
+
+function validate(form: PackageProductForm, images: ProductImageInput[]): ValidationErrors {
+  const errors: ValidationErrors = {}
   if (!form.name.trim())        errors.name  = 'Package name is required.'
   if (!form.tagline.trim())     errors.tagline = 'Short description is required.'
   if (!form.price || isNaN(Number(form.price)) || Number(form.price) <= 0)
     errors.price = 'A valid price is required.'
+  if (
+    form.discountPrice !== '' &&
+    (!Number.isFinite(Number(form.discountPrice)) ||
+      Number(form.discountPrice) <= 0 ||
+      Number(form.discountPrice) >= Number(form.price))
+  ) {
+    errors.discountPrice = 'Discount price must be greater than zero and lower than the regular price.'
+  }
   if (images.length === 0)      errors.images = 'At least one image is required.'
   return errors
 }
 
 // ── Tabs ─────────────────────────────────────────────────────────────────────
-const TABS = [
+const TABS: Array<{ id: TabId; label: string }> = [
   { id: 'basic',   label: 'Basic Info' },
   { id: 'images',  label: 'Images' },
   { id: 'details', label: 'Product Details' },
   { id: 'tags',    label: 'Tags & Status' },
 ]
 
-export default function AddProductModal({ onClose, editProduct = null }) {
+function imagesFromProduct(product: PackageProduct | null): ProductImageInput[] {
+  if (!product) return []
+  const storedImages = Array.isArray(product.images) && product.images.length
+    ? product.images
+    : [product.image, ...(product.gallery || [])]
+  const publicIds = Array.isArray(product.imagePublicIds) ? product.imagePublicIds : []
+  const seen = new Set<string>()
+  return storedImages
+    .map((url, index) => ({ url, index }))
+    .filter(({ url }) => {
+      if (!url || /^data:/i.test(url) || seen.has(url)) return false
+      seen.add(url)
+      return true
+    })
+    .map(({ url, index }) => ({
+      id: `existing-${index}-${product.id}`,
+      preview: url,
+      url,
+      publicId: publicIds[index] || '',
+    }))
+}
+
+export default function AddProductModal({ onClose, editProduct = null }: {
+  onClose: () => void
+  editProduct?: PackageProduct | null
+}) {
   const { addProduct, updateProduct } = useProducts()
   const isEditing = !!editProduct
 
-  const [form,    setForm]    = useState(isEditing ? toFormState(editProduct) : EMPTY_FORM)
-  const [images,  setImages]  = useState([])
-  const [tab,     setTab]     = useState('basic')
-  const [errors,  setErrors]  = useState({})
-  const [status,  setStatus]  = useState('idle') // 'idle' | 'success' | 'error'
+  const [form,    setForm]    = useState<PackageProductForm>(editProduct ? toFormState(editProduct) : EMPTY_FORM)
+  const [images,  setImages]  = useState<ProductImageInput[]>(() => imagesFromProduct(editProduct))
+  const [tab,     setTab]     = useState<TabId>('basic')
+  const [errors,  setErrors]  = useState<ValidationErrors>({})
+  const [status,  setStatus]  = useState<'idle' | 'success' | 'error'>('idle')
+  const [submitError, setSubmitError] = useState('')
   const [saving,  setSaving]  = useState(false)
 
-  const modalRef = useRef()
+  const modalRef = useRef<HTMLDivElement>(null)
 
   // Close on Escape
   useEffect(() => {
-    const handler = (e) => { if (e.key === 'Escape') onClose() }
+    const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
   }, [onClose])
@@ -132,42 +173,52 @@ export default function AddProductModal({ onClose, editProduct = null }) {
     return () => { document.body.style.overflow = '' }
   }, [])
 
-  const handleChange = (e) => {
-    const { name, value, type, checked } = e.target
+  const handleChange = (e: FormChangeEvent) => {
+    const { name, value, type } = e.target
+    const checked = 'checked' in e.target ? e.target.checked : false
     const val = type === 'checkbox' ? checked : type === 'toggle' ? e.target.value : value
     setForm((prev) => ({ ...prev, [name]: val }))
-    if (errors[name]) setErrors((prev) => { const n = { ...prev }; delete n[name]; return n })
+    setStatus('idle')
+    setSubmitError('')
+    if (name in errors) setErrors((prev) => {
+      const next = { ...prev }
+      delete next[name as ValidationKey]
+      return next
+    })
   }
 
-  const handleCategoryChange = (e) => {
+  const handleCategoryChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     setForm((prev) => ({ ...prev, categories: [e.target.value] }))
+    setStatus('idle')
+    setSubmitError('')
   }
 
-  const handleSubmit = async (e) => {
+  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault()
     const errs = validate(form, images)
     if (Object.keys(errs).length) {
       setErrors(errs)
       // Jump to first tab with errors
-      if (errs.name || errs.tagline || errs.price)    setTab('basic')
+      if (errs.name || errs.tagline || errs.price || errs.discountPrice) setTab('basic')
       else if (errs.images)                            setTab('images')
       return
     }
 
     setSaving(true)
+    setStatus('idle')
+    setSubmitError('')
     try {
-      // Simulates async API call — swap with real fetch() later
-      await new Promise((r) => setTimeout(r, 400))
       const payload = { ...form, images }
-      if (isEditing) {
-        updateProduct(editProduct.id, payload)
+      if (editProduct) {
+        await updateProduct(editProduct.id, payload)
       } else {
-        addProduct(payload)
+        await addProduct(payload)
       }
       setStatus('success')
-      setTimeout(onClose, 1200)
-    } catch {
+      window.setTimeout(onClose, 900)
+    } catch (cause) {
       setStatus('error')
+      setSubmitError(cause instanceof Error ? cause.message : 'The package could not be saved.')
       setSaving(false)
     }
   }
@@ -177,6 +228,9 @@ export default function AddProductModal({ onClose, editProduct = null }) {
     <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-charcoal/40 px-4 py-8">
       <div
         ref={modalRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="package-modal-title"
         className="relative w-full max-w-6xl bg-white rounded-3xl shadow-lift my-auto"
       >
         {/* Header */}
@@ -185,7 +239,7 @@ export default function AddProductModal({ onClose, editProduct = null }) {
             <div className="w-9 h-9 rounded-xl bg-olive/10 text-olive flex items-center justify-center">
               <Package size={18} />
             </div>
-            <h2 className="font-serif text-2xl text-charcoal">
+            <h2 id="package-modal-title" className="font-serif text-2xl text-charcoal">
               {isEditing ? `Edit — ${editProduct.name}` : 'Add New Package'}
             </h2>
           </div>
@@ -206,8 +260,8 @@ export default function AddProductModal({ onClose, editProduct = null }) {
           </div>
         )}
         {status === 'error' && (
-          <div className="mx-7 mt-5 flex items-center gap-2 bg-red-50 text-red-600 rounded-xl px-4 py-3 text-sm">
-            <AlertCircle size={16} /> Something went wrong. Please try again.
+          <div role="alert" className="mx-7 mt-5 flex items-center gap-2 bg-red-50 text-red-600 rounded-xl px-4 py-3 text-sm">
+            <AlertCircle size={16} /> {submitError || 'The package could not be saved. Please try again.'}
           </div>
         )}
 
@@ -216,7 +270,7 @@ export default function AddProductModal({ onClose, editProduct = null }) {
           <div className="mx-7 mt-5 bg-red-50 border border-red-100 rounded-xl px-4 py-3">
             <p className="text-sm text-red-600 font-medium mb-1">Please fix the following:</p>
             <ul className="list-disc list-inside space-y-0.5">
-              {Object.values(errors).map((e) => (
+              {Object.values(errors).filter((value): value is string => Boolean(value)).map((e) => (
                 <li key={e} className="text-xs text-red-500">{e}</li>
               ))}
             </ul>
@@ -230,7 +284,7 @@ export default function AddProductModal({ onClose, editProduct = null }) {
             <div className="flex items-center gap-1 px-7 pt-5 pb-1 overflow-x-auto no-scrollbar">
               {TABS.map((t) => {
                 const hasError =
-                  (t.id === 'basic'  && (errors.name || errors.tagline || errors.price)) ||
+                  (t.id === 'basic'  && (errors.name || errors.tagline || errors.price || errors.discountPrice)) ||
                   (t.id === 'images' && errors.images)
                 return (
                   <button
@@ -309,6 +363,7 @@ export default function AddProductModal({ onClose, editProduct = null }) {
                         label="Discount Price" name="discountPrice" type="number" value={form.discountPrice}
                         onChange={handleChange} placeholder="Optional"
                         hint="Leave blank for no discount"
+                        error={errors.discountPrice}
                       />
                       <FormInput
                         label="Stock Qty" name="stock" type="number" value={form.stock}
@@ -462,13 +517,13 @@ export default function AddProductModal({ onClose, editProduct = null }) {
 }
 
 // Convert an existing product back into the flat form shape for editing
-function toFormState(product) {
+function toFormState(product: PackageProduct): PackageProductForm {
   return {
     name:          product.name        || '',
     tagline:       product.tagline     || '',
     description:   product.description || '',
     categories:    product.categories  || ['calm'],
-    collection:    product.id          || 'stillness',
+    collection:    product.collection || product.slug || 'stillness',
     price:         product.price?.toString()         || '',
     discountPrice: product.discountPrice?.toString() || '',
     stock:         product.stock?.toString()         || '',

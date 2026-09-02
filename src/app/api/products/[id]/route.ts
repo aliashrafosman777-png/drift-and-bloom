@@ -126,7 +126,7 @@ export async function PUT(req: NextRequest, { params }: RouteParams) {
     )
     const isFish = existing.packageCategory === 'fish'
     const isCatalogProduct = isCatalogProductRecord(existing as unknown as Record<string, unknown>)
-    if ((isFish || isCatalogProduct) && version === undefined) {
+    if (version === undefined) {
       return withNoStore(errorResponse('The current product version is required.', 428))
     }
 
@@ -193,10 +193,39 @@ export async function PUT(req: NextRequest, { params }: RouteParams) {
                 : 'Choose a valid Candles or Plants product type.'
         return withNoStore(errorResponse(message, 400))
       }
-    } else if (changes.status) {
-      changes.isActive = statusIsStorefrontVisible(
-        changes.status as 'active' | 'draft' | 'out_of_stock',
-      )
+    } else {
+      const merged = { ...existing, ...changes }
+      if (!String(merged.name || '').trim() || !String(merged.tagline || '').trim() || Number(merged.price) <= 0) {
+        return withNoStore(errorResponse(
+          'Package name, short description, and a price greater than zero are required.',
+          400,
+        ))
+      }
+      const image = String(merged.image || (Array.isArray(merged.images) ? merged.images[0] : '') || '')
+      if (!image || /^data:/i.test(image)) {
+        return withNoStore(errorResponse('At least one durably stored package image is required.', 400))
+      }
+      const discountPrice = merged.discountPrice == null ? null : Number(merged.discountPrice)
+      if (
+        discountPrice !== null &&
+        (!Number.isFinite(discountPrice) || discountPrice <= 0 || discountPrice >= Number(merged.price))
+      ) {
+        return withNoStore(errorResponse(
+          'Discount price must be greater than zero and lower than the regular price.',
+          400,
+        ))
+      }
+      const status = (merged.status || 'active') as 'active' | 'draft' | 'out_of_stock'
+      changes.discountPrice = discountPrice
+      changes.status = status
+      changes.isActive = statusIsStorefrontVisible(status)
+      changes.packageCategory = ''
+      changes.productType = ''
+      changes.candleCategory = ''
+      changes.fishSubCategory = ''
+      changes.aquaticLifeType = ''
+      changes.fishKey = null
+      changes.catalogKey = null
     }
 
     const query: Record<string, unknown> = { _id: id, deletedAt: null }
@@ -261,10 +290,7 @@ export async function DELETE(req: NextRequest, { params }: RouteParams) {
 
     const rawVersion = new URL(req.url).searchParams.get('version')
     const version = rawVersion === null ? undefined : Number(rawVersion)
-    if (
-      (existing.packageCategory === 'fish' || isCatalogProductRecord(existing as unknown as Record<string, unknown>)) &&
-      (!Number.isInteger(version) || Number(version) < 0)
-    ) {
+    if (!Number.isInteger(version) || Number(version) < 0) {
       return withNoStore(errorResponse('The current product version is required.', 428))
     }
 

@@ -1,19 +1,22 @@
-// @ts-nocheck
 "use client"
 
 import React, { useRef, useState } from 'react'
 import { ImagePlus, X, Star, Upload } from 'lucide-react'
 import OptimizedImage from '../common/OptimizedImage'
+import type { ProductImageInput } from '@/lib/clientProductImages'
 
-export default function ImageUploader({ images = [], onChange }) {
+export default function ImageUploader({ images = [], onChange }: {
+  images?: ProductImageInput[]
+  onChange: React.Dispatch<React.SetStateAction<ProductImageInput[]>>
+}) {
   const [dragging, setDragging] = useState(false)
   const [fileError, setFileError] = useState('')
-  const inputRef = useRef()
+  const inputRef = useRef<HTMLInputElement>(null)
 
-  const readFiles = (files) => {
+  const readFiles = (files: FileList | File[]) => {
     const allowedTypes = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/avif'])
     const maxBytes = 4 * 1024 * 1024
-    const selected = Array.from(files || [])
+    const selected = Array.from(files)
     const invalidType = selected.find((file) => !allowedTypes.has(file.type))
     if (invalidType) {
       setFileError('Use a JPEG, PNG, WebP, or AVIF image.')
@@ -34,25 +37,26 @@ export default function ImageUploader({ images = [], onChange }) {
     valid.forEach((file) => {
       const reader = new FileReader()
       reader.onload = (e) => {
-        const newImg = { id: Date.now() + Math.random(), file, preview: e.target.result }
+        if (typeof e.target?.result !== 'string') return
+        const newImg: ProductImageInput = { id: Date.now() + Math.random(), file, preview: e.target.result }
         onChange((prev) => [...prev, newImg])
       }
       reader.readAsDataURL(file)
     })
   }
 
-  const handleDrop = (e) => {
+  const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault()
     setDragging(false)
     readFiles(e.dataTransfer.files)
   }
 
-  const handleRemove = (id) => {
+  const handleRemove = (id: ProductImageInput['id']) => {
     setFileError('')
     onChange((prev) => prev.filter((img) => img.id !== id))
   }
 
-  const handleSetMain = (id) => {
+  const handleSetMain = (id: ProductImageInput['id']) => {
     onChange((prev) => {
       const idx = prev.findIndex((img) => img.id === id)
       if (idx <= 0) return prev

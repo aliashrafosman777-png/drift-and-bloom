@@ -1,320 +1,437 @@
-// @ts-nocheck
 "use client"
 
 /**
- * ProductContext
- * ─────────────────────────────────────────────────────────────────────────────
- * Single source of truth for the product catalog. Now backed by the
- * /api/products API route with MongoDB.
+ * Database-backed source of truth for predefined packages.
  *
- * Falls back to local seed data if the API is unreachable (e.g. no MongoDB
- * connection configured yet) so the frontend always works.
+ * Fish and Candle/Plant builder items have their own focused contexts, but all
+ * predefined package reads and mutations go through the same MongoDB products
+ * API. Browser storage is deliberately ignored and is only cleared as legacy
+ * cleanup.
  */
 
-import React, { createContext, useContext, useEffect, useMemo, useState, useCallback } from 'react'
-import { apiFetch } from '../lib/api'
-import { BEST_SELLER_CATEGORY_ID, products as SEED } from '../data/products'
+import React, {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react'
+import { usePathname } from 'next/navigation'
+import { apiFetch } from '@/lib/api'
+import { BEST_SELLER_CATEGORY_ID } from '@/data/products'
+import {
+  cleanupUploadedProductImages,
+  persistProductImages,
+} from '@/lib/clientProductImages'
+import type { PersistedProductImages, ProductImageInput } from '@/lib/clientProductImages'
+import { useAuth } from '@/context/AuthContext'
 
-const packageFallbackImage = "/assets/package.png"
-const CUSTOM_PRODUCTS_STORAGE_KEY = 'db_custom_products_v1'
+const PACKAGE_FALLBACK_IMAGE = '/assets/package.png'
+const LEGACY_STORAGE_KEY = 'db_custom_products_v1'
+const REFRESH_INTERVAL_MS = 60_000
+const CHANNEL_NAME = 'db-package-products-invalidations'
 
-const ProductContext = createContext(null)
+export type PackageStatus = 'active' | 'draft' | 'out_of_stock'
 
-const safeParse = (raw, fallback) => {
-  try {
-    return raw ? JSON.parse(raw) : fallback
-  } catch {
-    return fallback
+export type PackagePlantOption = {
+  name: string
+  petFriendly?: boolean
+  note?: string
+}
+
+export type PackageProduct = {
+  _id: string
+  id: string
+  slug: string
+  name: string
+  tagline: string
+  description: string
+  price: number
+  discountPrice: number | null
+  stock: number
+  sku: string
+  rating: number
+  reviews: number
+  categories: string[]
+  category: string
+  bestSeller: boolean
+  isBestSeller?: boolean
+  best_seller?: boolean
+  image: string
+  thumbnail?: string
+  images: string[]
+  gallery: string[]
+  imagePublicIds: string[]
+  tags: string[]
+  mood: string[]
+  includes: string[]
+  plantOptions: PackagePlantOption[]
+  status: PackageStatus
+  isActive: boolean
+  version: number
+  collection: string
+  size: string
+  difficulty: string
+  light: string
+  watering: string
+  petFriendly: boolean
+  airPurifying: boolean
+  scent: string
+}
+
+export type PackageProductForm = {
+  name: string
+  tagline: string
+  description: string
+  categories: string[]
+  bestSeller?: boolean
+  collection: string
+  price: string | number
+  discountPrice: string | number | null
+  stock: string | number
+  sku: string
+  status: PackageStatus
+  size: string
+  difficulty: string
+  light: string
+  watering: string
+  petFriendly: boolean
+  airPurifying: boolean
+  tags: string[]
+  scent: string
+  images?: ProductImageInput[]
+}
+
+type ProductContextValue = {
+  products: PackageProduct[]
+  loading: boolean
+  ready: boolean
+  error: string | null
+  refreshProducts: () => Promise<void>
+  addProduct: (form: PackageProductForm) => Promise<PackageProduct>
+  updateProduct: (id: string, form: PackageProductForm) => Promise<PackageProduct>
+  removeProduct: (id: string) => Promise<void>
+  getProductById: (id: string) => PackageProduct | null
+  getRelatedProducts: (id: string, count?: number) => PackageProduct[]
+}
+
+const ProductContext = createContext<ProductContextValue | null>(null)
+
+function stringArray(value: unknown): string[] {
+  return Array.isArray(value) ? value.filter((item) => typeof item === 'string') : []
+}
+
+function normalizePlantOptions(value: unknown): PackagePlantOption[] {
+  if (!Array.isArray(value)) return []
+  return value.flatMap((item) => {
+    if (!item || typeof item !== 'object') return []
+    const option = item as Record<string, unknown>
+    if (typeof option.name !== 'string' || !option.name.trim()) return []
+    return [{
+      name: option.name,
+      petFriendly: Boolean(option.petFriendly),
+      note: typeof option.note === 'string' ? option.note : undefined,
+    }]
+  })
+}
+
+function normalizeStatus(value: unknown, isActive: unknown): PackageStatus {
+  if (value === 'active' || value === 'draft' || value === 'out_of_stock') return value
+  return isActive === false ? 'draft' : 'active'
+}
+
+function normalizeProduct(value: unknown): PackageProduct {
+  if (!value || typeof value !== 'object') {
+    throw new Error('The product API returned an empty product.')
   }
-}
+  const raw = value as Record<string, unknown>
 
-function readStoredCustomProducts() {
-  if (typeof window === 'undefined') return []
-  return safeParse(localStorage.getItem(CUSTOM_PRODUCTS_STORAGE_KEY), [])
-}
+  const id = String(raw._id || raw.id || '')
+  if (!/^[0-9a-f]{24}$/i.test(id)) {
+    throw new Error('The product API returned an unstable package identifier.')
+  }
 
-/**
- * Normalize a DB product into the shape the frontend expects.
- * Adds backward-compatible aliases (id, categories, reviews).
- */
-function normalizeProduct(p) {
-  if (!p) return p
-  const cats = Array.isArray(p.category)
-    ? p.category
-    : Array.isArray(p.categories)
-    ? p.categories
-    : [p.category].filter(Boolean)
-
-  const fishSub =
-    p.fishSubCategory ||
-    p.subCategory ||
-    cats.find((c) => c === 'aquariums' || c === 'aquatic-life') ||
-    (cats.includes('fish') ? 'aquatic-life' : null)
+  const categories = stringArray(raw.category || raw.categories)
+  const status = normalizeStatus(raw.status, raw.isActive)
+  const images = stringArray(raw.images).filter((value) => !/^data:/i.test(value))
+  const gallery = stringArray(raw.gallery).filter((value) => !/^data:/i.test(value))
+  const image = typeof raw.image === 'string' && raw.image && !/^data:/i.test(raw.image)
+    ? raw.image
+    : images[0] || PACKAGE_FALLBACK_IMAGE
 
   return {
-    ...p,
-    id: p._id || p.id || p.slug,
-    category: p.category || (cats.includes('fish') ? 'fish' : 'calm'),
-    categories: cats,
-    fishSubCategory: fishSub,
-    subCategory: fishSub || p.subCategory || '',
-    reviews: p.reviewsCount ?? p.reviews ?? 0,
-    bestSeller: p.bestSeller || cats.includes(BEST_SELLER_CATEGORY_ID),
+    _id: id,
+    id,
+    slug: String(raw.slug || ''),
+    name: String(raw.name || ''),
+    tagline: String(raw.tagline || raw.shortDescription || ''),
+    description: String(raw.description || ''),
+    price: Number(raw.price) || 0,
+    discountPrice: raw.discountPrice == null ? null : Number(raw.discountPrice),
+    stock: Number(raw.stock) || 0,
+    sku: String(raw.sku || ''),
+    rating: Number(raw.rating) || 0,
+    reviews: Number(raw.reviewsCount ?? raw.reviews) || 0,
+    categories,
+    category: categories[0] || '',
+    bestSeller: Boolean(raw.bestSeller || categories.includes(BEST_SELLER_CATEGORY_ID)),
+    image,
+    images: images.length ? images : [image, ...gallery].filter(Boolean),
+    gallery,
+    imagePublicIds: stringArray(raw.imagePublicIds),
+    tags: stringArray(raw.tags),
+    mood: stringArray(raw.mood),
+    includes: stringArray(raw.includes),
+    plantOptions: normalizePlantOptions(raw.plantOptions),
+    status,
+    isActive: raw.isActive !== false && status === 'active',
+    version: Number.isInteger(raw.__v) ? Number(raw.__v) : Number(raw.version) || 0,
+    collection: String(raw.packageCollection || raw.slug || ''),
+    size: String(raw.size || 'medium'),
+    difficulty: String(raw.difficulty || 'beginner'),
+    light: String(raw.light || 'medium'),
+    watering: String(raw.watering || 'weekly'),
+    petFriendly: Boolean(raw.petFriendly),
+    airPurifying: Boolean(raw.airPurifying),
+    scent: String(raw.scent || ''),
   }
 }
 
-export function ProductProvider({ children }) {
-  const [baseProducts, setBaseProducts] = useState(SEED)
-  const [customProducts, setCustomProducts] = useState([])
-  const [isHydrated, setIsHydrated] = useState(false)
+function buildProductPayload(
+  form: PackageProductForm,
+  images: PersistedProductImages,
+): Record<string, unknown> {
+  const categories = stringArray(form.categories)
+  const status = form.status || 'active'
+  return {
+    name: String(form.name || '').trim(),
+    tagline: String(form.tagline || '').trim(),
+    description: String(form.description || '').trim(),
+    price: Number(form.price),
+    discountPrice: form.discountPrice === '' || form.discountPrice == null
+      ? null
+      : Number(form.discountPrice),
+    stock: Number(form.stock) || 0,
+    sku: String(form.sku || '').trim(),
+    category: categories.length ? categories : ['calm'],
+    bestSeller: Boolean(form.bestSeller || categories.includes(BEST_SELLER_CATEGORY_ID)),
+    scent: String(form.scent || '').trim(),
+    tags: stringArray(form.tags),
+    image: images.urls[0] || '',
+    thumbnail: images.urls[0] || '',
+    images: images.urls,
+    gallery: images.urls.slice(1),
+    imagePublicIds: images.publicIds,
+    status,
+    isActive: status === 'active',
+    packageCollection: String(form.collection || '').trim(),
+    size: String(form.size || 'medium'),
+    difficulty: String(form.difficulty || 'beginner'),
+    light: String(form.light || 'medium'),
+    watering: String(form.watering || 'weekly'),
+    petFriendly: Boolean(form.petFriendly),
+    airPurifying: Boolean(form.airPurifying),
+  }
+}
+
+export function ProductProvider({ children }: { children: React.ReactNode }) {
+  const pathname = usePathname()
+  const { isAdmin, loading: authLoading } = useAuth()
+  const isAdminView = pathname.startsWith('/admin')
+  const isPackageView = pathname === '/' ||
+    pathname === '/find-your-soul' ||
+    pathname.startsWith('/packages') ||
+    pathname === '/admin/products'
+  const [products, setProducts] = useState<PackageProduct[]>([])
   const [loading, setLoading] = useState(true)
-  const [error, setError] = useState(null)
+  const [ready, setReady] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const requestSequence = useRef(0)
 
-  // Hydrate customProducts from localStorage on mount (client-side only)
-  useEffect(() => {
-    const stored = readStoredCustomProducts()
-    if (stored && stored.length > 0) {
-      setCustomProducts(stored)
+  const refreshProducts = useCallback(async () => {
+    if (!isPackageView) {
+      setLoading(false)
+      setReady(false)
+      setError(null)
+      return
     }
-    setIsHydrated(true)
-  }, [])
+    if (authLoading || (isAdminView && !isAdmin)) return
 
-  // Persist custom products to localStorage AFTER initial hydration
-  useEffect(() => {
-    if (!isHydrated) return
+    const sequence = ++requestSequence.current
+    setLoading(true)
     try {
-      localStorage.setItem(CUSTOM_PRODUCTS_STORAGE_KEY, JSON.stringify(customProducts))
-    } catch {
-      /* ignore storage errors */
-    }
-  }, [customProducts, isHydrated])
+      const query = new URLSearchParams({
+        limit: '100',
+        sort: 'newest',
+        excludePackageCategory: 'fish',
+        excludeProductType: 'builder',
+      })
+      if (isAdminView) query.set('includeInactive', 'true')
 
-  /* ── Fetch products from API on mount ───────────────────────────────── */
-  useEffect(() => {
-    let cancelled = false
-
-    async function fetchProducts() {
-      try {
-        setLoading(true)
-        const res = await apiFetch('/api/products?limit=100&excludePackageCategory=fish&excludeProductType=builder', { cache: 'no-store' })
-        if (!cancelled && res.data?.products?.length > 0) {
-          setBaseProducts(res.data.products.map(normalizeProduct))
-        }
-      } catch (err) {
-        console.warn('ProductContext: API fetch failed, using seed data.', err)
-      } finally {
-        if (!cancelled) setLoading(false)
+      const response = await apiFetch<{ products: unknown[] }>(`/api/products?${query.toString()}`, { cache: 'no-store' })
+      const nextProducts = response.data.products.map(normalizeProduct)
+      if (sequence === requestSequence.current) {
+        setProducts(nextProducts)
+        setError(null)
+      }
+    } catch (cause) {
+      if (sequence === requestSequence.current) {
+        setProducts([])
+        setError(cause instanceof Error ? cause.message : 'Failed to load packages.')
+      }
+    } finally {
+      if (sequence === requestSequence.current) {
+        setLoading(false)
+        setReady(true)
       }
     }
+  }, [authLoading, isAdmin, isAdminView, isPackageView])
 
-    fetchProducts()
-    return () => { cancelled = true }
+  useEffect(() => {
+    try { window.localStorage.removeItem(LEGACY_STORAGE_KEY) } catch { /* legacy data is ignored */ }
   }, [])
 
-  // Catalog products (SEED packages + API DB packages + custom packages)
-  // NOTE: Individual Fish, Candle, and Plant products are intentionally
-  // excluded. They belong in Build Your Package, not the predefined Packages
-  // catalog managed by this legacy context.
-  const products = useMemo(() => {
-    const map = new Map()
-    // 1. Initial SEED packages (guarantees store is never empty!)
-    SEED.forEach((p) => {
-      const norm = normalizeProduct(p)
-      // Skip fish products — they belong in the builder, not the catalog
-      if (norm?.category === 'fish' || norm?.packageCategory === 'fish') return
-      if (['candles', 'plants'].includes(norm?.productType || norm?.packageCategory)) return
-      if (norm?.name) map.set(norm.name.trim().toLowerCase(), norm)
-      else if (norm?.id) map.set(norm.id, norm)
-    })
-    // 2. Base API products from DB (filter out fish products)
-    baseProducts.forEach((p) => {
-      const norm = normalizeProduct(p)
-      if (norm?.category === 'fish' || norm?.packageCategory === 'fish') return
-      if (['candles', 'plants'].includes(norm?.productType || norm?.packageCategory)) return
-      const cats = norm?.categories || []
-      if (cats.includes('fish') || cats.includes('aquariums') || cats.includes('aquatic-life')) return
-      if (norm?.fishSubCategory) return
-      if (norm?.name) map.set(norm.name.trim().toLowerCase(), norm)
-      else if (norm?.id) map.set(norm.id, norm)
-    })
-    // 3. Custom added packages (filter out fish products)
-    customProducts.forEach((p) => {
-      const norm = normalizeProduct(p)
-      if (norm?.category === 'fish' || norm?.packageCategory === 'fish') return
-      if (['candles', 'plants'].includes(norm?.productType || norm?.packageCategory)) return
-      if (norm?.name) map.set(norm.name.trim().toLowerCase(), norm)
-      else if (norm?.id) map.set(norm.id, norm)
-    })
-    return Array.from(map.values())
-  }, [baseProducts, customProducts])
+  useEffect(() => {
+    const initialRefresh = window.setTimeout(() => void refreshProducts(), 0)
+    return () => window.clearTimeout(initialRefresh)
+  }, [refreshProducts])
 
-  /* ── CRUD helpers ──────────────────────────────────────────────────── */
+  useEffect(() => {
+    if (!isPackageView) return
+    const refresh = () => void refreshProducts()
+    const visibility = () => { if (document.visibilityState === 'visible') refresh() }
+    const interval = window.setInterval(refresh, REFRESH_INTERVAL_MS)
+    window.addEventListener('focus', refresh)
+    document.addEventListener('visibilitychange', visibility)
+    return () => {
+      window.clearInterval(interval)
+      window.removeEventListener('focus', refresh)
+      document.removeEventListener('visibilitychange', visibility)
+    }
+  }, [isPackageView, refreshProducts])
 
-  /** Add a new product via API and return it. */
-  const addProduct = useCallback(async (rawForm) => {
+  useEffect(() => {
+    if (!isPackageView || !('BroadcastChannel' in window)) return
+    const channel = new BroadcastChannel(CHANNEL_NAME)
+    channel.onmessage = () => void refreshProducts()
+    return () => channel.close()
+  }, [isPackageView, refreshProducts])
+
+  const announceMutation = useCallback(() => {
+    if (!('BroadcastChannel' in window)) return
+    const channel = new BroadcastChannel(CHANNEL_NAME)
+    channel.postMessage({ changedAt: Date.now() })
+    channel.close()
+  }, [])
+
+  const addProduct = useCallback(async (rawForm: PackageProductForm) => {
+    const images = await persistProductImages(rawForm.images || [])
     try {
-      const formData = buildProductPayload(rawForm)
-      const res = await apiFetch('/api/products', {
+      const response = await apiFetch<unknown>('/api/products', {
         method: 'POST',
-        body: JSON.stringify(formData),
+        cache: 'no-store',
+        body: JSON.stringify(buildProductPayload(rawForm, images)),
       })
-      const product = normalizeProduct(res.data)
-      setCustomProducts((prev) => [product, ...prev])
-      return product
-    } catch (err) {
-      // Fallback: local-only add for demo
-      const id =
-        (rawForm.name || 'product')
-          .toLowerCase()
-          .replace(/[^a-z0-9]+/g, '-')
-          .replace(/(^-|-$)/g, '') +
-        '-' +
-        Date.now()
-      const product = buildLocalProduct(id, rawForm)
-      setCustomProducts((prev) => [product, ...prev])
-      return product
+      const created = normalizeProduct(response.data)
+      setProducts((current) => [created, ...current.filter((item) => item.id !== created.id)])
+      announceMutation()
+      await refreshProducts()
+      return created
+    } catch (cause) {
+      await cleanupUploadedProductImages(images.uploadedPublicIds)
+      throw cause
     }
-  }, [])
+  }, [announceMutation, refreshProducts])
 
-  /** Update an existing product via API. */
-  const updateProduct = useCallback(async (id, rawForm) => {
+  const updateProduct = useCallback(async (id: string, rawForm: PackageProductForm) => {
+    const current = products.find((product) => product.id === id)
+    if (!current) throw new Error('This package is no longer available. Reload and try again.')
+
+    const images = await persistProductImages(rawForm.images || [])
     try {
-      const formData = buildProductPayload(rawForm)
-      const res = await apiFetch(`/api/products/${id}`, {
+      const response = await apiFetch<unknown>(`/api/products/${id}`, {
         method: 'PUT',
-        body: JSON.stringify(formData),
+        cache: 'no-store',
+        body: JSON.stringify({
+          ...buildProductPayload(rawForm, images),
+          version: current.version,
+        }),
       })
-      const updated = normalizeProduct(res.data)
-      setCustomProducts((prev) =>
-        prev.map((p) => (p.id === id || p._id === id ? { ...p, ...updated } : p))
-      )
-      setBaseProducts((prev) =>
-        prev.map((p) => (p.id === id || p._id === id ? { ...p, ...updated } : p))
-      )
-    } catch {
-      // Fallback: local-only update
-      setCustomProducts((prev) =>
-        prev.map((p) => (p.id === id ? { ...p, ...buildLocalProduct(id, rawForm) } : p))
-      )
-      setBaseProducts((prev) =>
-        prev.map((p) => (p.id === id ? { ...p, ...buildLocalProduct(id, rawForm) } : p))
-      )
+      const updated = normalizeProduct(response.data)
+      setProducts((items) => items.map((item) => item.id === id ? updated : item))
+      announceMutation()
+      await refreshProducts()
+      return updated
+    } catch (cause) {
+      await cleanupUploadedProductImages(images.uploadedPublicIds)
+      await refreshProducts()
+      throw cause
     }
-  }, [])
+  }, [announceMutation, products, refreshProducts])
 
-  /** Delete a product via API. */
-  const removeProduct = useCallback(async (id) => {
+  const removeProduct = useCallback(async (id: string) => {
+    const current = products.find((product) => product.id === id)
+    if (!current) throw new Error('This package is no longer available. Reload and try again.')
+
     try {
-      await apiFetch(`/api/products/${id}`, { method: 'DELETE' })
-    } catch {
-      // proceed with local removal anyway
+      await apiFetch(`/api/products/${id}?version=${current.version}`, {
+        method: 'DELETE',
+        cache: 'no-store',
+      })
+      setProducts((items) => items.filter((item) => item.id !== id))
+      announceMutation()
+      await refreshProducts()
+    } catch (cause) {
+      await refreshProducts()
+      throw cause
     }
-    setCustomProducts((prev) => prev.filter((p) => p.id !== id && p._id !== id))
-    setBaseProducts((prev) => prev.filter((p) => p.id !== id && p._id !== id))
-  }, [])
+  }, [announceMutation, products, refreshProducts])
 
-  /** Find a single product by id from live state. */
   const getProductById = useCallback(
-    (id) => products.find((p) => p.id === id || p._id === id || p.slug === id) || null,
-    [products]
+    (id: string) => products.find((product) => (
+      product.id === id || product._id === id || product.slug === id
+    )) || null,
+    [products],
   )
 
-  /** Get N related products excluding the given id. */
   const getRelatedProducts = useCallback(
-    (id, count = 5) =>
-      products.filter((p) => p.id !== id && p._id !== id).slice(0, count),
-    [products]
+    (id: string, count = 5) => products.filter((product) => (
+      product.id !== id && product._id !== id && product.slug !== id
+    )).slice(0, count),
+    [products],
   )
 
-  const value = useMemo(
-    () => ({
-      products,
-      loading,
-      error,
-      addProduct,
-      updateProduct,
-      removeProduct,
-      getProductById,
-      getRelatedProducts,
-    }),
-    [products, loading, error, addProduct, updateProduct, removeProduct, getProductById, getRelatedProducts]
-  )
+  const value = useMemo(() => ({
+    products,
+    loading,
+    ready,
+    error,
+    refreshProducts,
+    addProduct,
+    updateProduct,
+    removeProduct,
+    getProductById,
+    getRelatedProducts,
+  }), [
+    products,
+    loading,
+    ready,
+    error,
+    refreshProducts,
+    addProduct,
+    updateProduct,
+    removeProduct,
+    getProductById,
+    getRelatedProducts,
+  ])
 
   return <ProductContext.Provider value={value}>{children}</ProductContext.Provider>
 }
 
 export function useProducts() {
-  const ctx = useContext(ProductContext)
-  if (!ctx) throw new Error('useProducts must be used within a ProductProvider')
-  return ctx
-}
-
-/* ── Internal helpers ────────────────────────────────────────────────────── */
-
-/**
- * Build a product payload for the API from the admin form data.
- */
-function buildProductPayload(form) {
-  const images =
-    form.images?.length
-      ? form.images.map((img) => img.preview || img.url || img)
-      : []
-
-  return {
-    name:        form.name        || '',
-    tagline:     form.tagline     || '',
-    description: form.description || '',
-    price:       Number(form.price)         || 0,
-    discountPrice: form.discountPrice ? Number(form.discountPrice) : null,
-    rating:      Number(form.rating)        || 5,
-    sku:         form.sku         || '',
-    stock:       Number(form.stock)         || 0,
-    category:    form.categories  || ['calm'],
-    bestSeller:  Boolean(form.bestSeller || form.categories?.includes(BEST_SELLER_CATEGORY_ID)),
-    mood:        form.mood        || [],
-    scent:       form.scent       || '',
-    tags:        form.tags        || [],
-    includes:    ['Live Plant', 'Scented Candle', 'Story Card', 'Themed Packaging'],
-    plantOptions: [],
-    image:       images[0] || packageFallbackImage,
-    gallery:     images.slice(1),
-    images:      images,
-    isActive:    form.status !== 'draft' && form.status !== 'out_of_stock',
-  }
-}
-
-/**
- * Local-only product builder (fallback when API is unreachable).
- */
-function buildLocalProduct(id, form) {
-  const images =
-    form.images?.length
-      ? form.images.map((img) => img.preview || img.url)
-      : []
-  const mainImage = images[0] || packageFallbackImage
-
-  return {
-    id,
-    name:        form.name        || '',
-    tagline:     form.tagline     || '',
-    description: form.description || '',
-    price:       Number(form.price)         || 0,
-    discountPrice: form.discountPrice ? Number(form.discountPrice) : null,
-    rating:      Number(form.rating)        || 5,
-    reviews:     0,
-    sku:         form.sku         || '',
-    stock:       Number(form.stock)         || 0,
-    status:      form.status      || 'active',
-    categories:  form.categories  || ['calm'],
-    bestSeller:  Boolean(form.bestSeller || form.categories?.includes(BEST_SELLER_CATEGORY_ID)),
-    mood:        form.mood        || [],
-    scent:       form.scent       || '—',
-    tags:        form.tags        || [],
-    includes:    ['Live Plant', 'Scented Candle', 'Story Card', 'Themed Packaging'],
-    plantOptions: [],
-    image:       mainImage,
-    gallery:     images.slice(1),
-    _createdAt:  new Date().toISOString(),
-    _source:     'admin-form',
-  }
+  const context = useContext(ProductContext)
+  if (!context) throw new Error('useProducts must be used within a ProductProvider')
+  return context
 }

@@ -1,8 +1,25 @@
-// @ts-nocheck
 "use client"
 
 import React, { useState } from 'react'
 import { X, ChevronDown } from 'lucide-react'
+
+export type FormFieldChangeEvent = {
+  target: {
+    name: string
+    value: string | number | boolean | string[]
+    type?: string
+    checked?: boolean
+  }
+}
+
+type BaseFieldProps = {
+  label?: string
+  name: string
+  value: string | number | null
+  required?: boolean
+  placeholder?: string
+  className?: string
+}
 
 const BASE =
   'w-full bg-beige border border-charcoal/10 rounded-xl px-4 py-3 text-sm text-charcoal ' +
@@ -12,6 +29,11 @@ const BASE =
 export function FormInput({
   label, name, value, onChange, required, type = 'text',
   placeholder, hint, error, className = '',
+}: BaseFieldProps & {
+  onChange: (event: React.ChangeEvent<HTMLInputElement>) => void
+  type?: React.HTMLInputTypeAttribute
+  hint?: string
+  error?: string
 }) {
   return (
     <label className={`block ${className}`}>
@@ -35,7 +57,10 @@ export function FormInput({
   )
 }
 
-export function FormTextarea({ label, name, value, onChange, required, placeholder, rows = 3, className = '' }) {
+export function FormTextarea({ label, name, value, onChange, required, placeholder, rows = 3, className = '' }: BaseFieldProps & {
+  onChange: (event: React.ChangeEvent<HTMLTextAreaElement>) => void
+  rows?: number
+}) {
   return (
     <label className={`block ${className}`}>
       {label && (
@@ -56,7 +81,10 @@ export function FormTextarea({ label, name, value, onChange, required, placehold
   )
 }
 
-export function FormSelect({ label, name, value, onChange, required, options = [], className = '' }) {
+export function FormSelect({ label, name, value, onChange, required, options = [], className = '' }: BaseFieldProps & {
+  onChange: (event: React.ChangeEvent<HTMLSelectElement>) => void
+  options?: Array<{ value: string; label: string }>
+}) {
   return (
     <label className={`block relative ${className}`}>
       {label && (
@@ -82,7 +110,13 @@ export function FormSelect({ label, name, value, onChange, required, options = [
   )
 }
 
-export function FormToggle({ label, name, checked, onChange, hint }) {
+export function FormToggle({ label, name, checked, onChange, hint }: {
+  label: string
+  name: string
+  checked: boolean
+  onChange: (event: FormFieldChangeEvent) => void
+  hint?: string
+}) {
   return (
     <div className="flex items-center justify-between py-2">
       <div>
@@ -109,7 +143,12 @@ const PRESET_TAGS = [
   'Office', 'Bedroom', 'Living Room', 'Pet Friendly', 'Air Purifying', 'Rare',
 ]
 
-export function FormTagInput({ label, value = [], onChange, name }) {
+export function FormTagInput({ label, value = [], onChange, name }: {
+  label?: string
+  value?: string[]
+  onChange: (event: FormFieldChangeEvent) => void
+  name: string
+}) {
   const [input, setInput] = useState('')
 
   const addTag = (tag) => {
@@ -175,7 +214,10 @@ export function FormTagInput({ label, value = [], onChange, name }) {
   )
 }
 
-export function FormSection({ title, children, className = '' }) {
+export function FormSection({ title, children, className = '' }: React.PropsWithChildren<{
+  title: string
+  className?: string
+}>) {
   return (
     <div className={`space-y-4 ${className}`}>
       <h3 className="font-serif text-base text-charcoal border-b border-charcoal/8 pb-2">{title}</h3>

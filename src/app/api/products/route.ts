@@ -121,7 +121,10 @@ function sanitizedStringArrayProjection(field: string, rejectDataUrls = false, p
   }
 }
 
-async function attachAdminMedia(products: Record<string, unknown>[]) {
+async function attachProductMedia(
+  products: Record<string, unknown>[],
+  includeStorageIds: boolean,
+) {
   const ids = products.map((product) => product._id).filter(Boolean)
   if (!ids.length) return products
 
@@ -140,7 +143,14 @@ async function attachAdminMedia(products: Record<string, unknown>[]) {
   const mediaById = new Map(media.map((item) => [String(item._id), item]))
   return products.map((product) => {
     const item = mediaById.get(String(product._id))
-    return item ? { ...product, gallery: item.gallery, images: item.images, imagePublicIds: item.imagePublicIds } : product
+    return item
+      ? {
+          ...product,
+          gallery: item.gallery,
+          images: item.images,
+          ...(includeStorageIds ? { imagePublicIds: item.imagePublicIds } : {}),
+        }
+      : product
   })
 }
 
@@ -165,6 +175,13 @@ const LIST_PROJECTION = {
   mood: 1,
   includes: 1,
   plantOptions: 1,
+  packageCollection: 1,
+  size: 1,
+  difficulty: 1,
+  light: 1,
+  watering: 1,
+  petFriendly: 1,
+  airPurifying: 1,
   featured: 1,
   bestSeller: 1,
   isActive: 1,
@@ -281,6 +298,53 @@ function catalogValidationMessage(error: unknown) {
   }
 }
 
+function canonicalizePackageProduct<T extends Record<string, unknown>>(data: T): T {
+  if (data.packageCategory === 'fish' || normalizeCatalogProductType(data.productType || data.packageCategory)) {
+    return data
+  }
+
+  if (!String(data.name || '').trim() || !String(data.tagline || '').trim() || Number(data.price) <= 0) {
+    throw new Error('INVALID_PACKAGE_REQUIRED_FIELDS')
+  }
+  const image = String(data.image || (Array.isArray(data.images) ? data.images[0] : '') || '')
+  if (!image || /^data:/i.test(image)) throw new Error('INVALID_PACKAGE_IMAGE')
+
+  const discountPrice = data.discountPrice == null ? null : Number(data.discountPrice)
+  if (
+    discountPrice !== null &&
+    (!Number.isFinite(discountPrice) || discountPrice <= 0 || discountPrice >= Number(data.price))
+  ) {
+    throw new Error('INVALID_DISCOUNT_PRICE')
+  }
+
+  const status = (data.status || 'active') as 'active' | 'draft' | 'out_of_stock'
+  return {
+    ...data,
+    packageCategory: '',
+    productType: '',
+    candleCategory: '',
+    fishSubCategory: '',
+    aquaticLifeType: '',
+    fishKey: null,
+    catalogKey: null,
+    discountPrice,
+    status,
+    isActive: statusIsStorefrontVisible(status),
+    deletedAt: null,
+  } as T
+}
+
+function mutationValidationMessage(error: unknown) {
+  const code = (error as Error).message
+  if (code === 'INVALID_PACKAGE_REQUIRED_FIELDS') {
+    return 'Package name, short description, and a price greater than zero are required.'
+  }
+  if (code === 'INVALID_PACKAGE_IMAGE') {
+    return 'At least one durably stored package image is required.'
+  }
+  return catalogValidationMessage(error)
+}
+
 /**
  * GET /api/products
  * Public by default. `includeInactive=true` is admin-only.
@@ -385,9 +449,7 @@ export async function GET(req: NextRequest) {
       ]).allowDiskUse(true),
       Product.countDocuments(filter),
     ])
-    const productsWithMedia = includeInactive
-      ? await attachAdminMedia(rawProducts)
-      : rawProducts
+    const productsWithMedia = await attachProductMedia(rawProducts, includeInactive)
     const products = packageCategory === 'fish'
       ? productsWithMedia.map((product) => canonicalizeLegacyFishProductForRead(product))
       : productsWithMedia
@@ -416,14 +478,16 @@ export async function POST(req: NextRequest) {
 
     let data: Record<string, unknown>
     try {
-      data = canonicalizeCatalogProduct(canonicalizeFishProduct(parsed.data))
+      data = canonicalizePackageProduct(
+        canonicalizeCatalogProduct(canonicalizeFishProduct(parsed.data)),
+      )
     } catch (error) {
       const errorCode = (error as Error).message
       const message = errorCode === 'INVALID_AQUATIC_LIFE_TYPE'
         ? 'Aquatic Life products require a valid aquatic life type.'
         : errorCode === 'INVALID_FISH_SUB_CATEGORY'
           ? 'Fish products require a valid fish sub-category.'
-          : catalogValidationMessage(error)
+          : mutationValidationMessage(error)
       return withNoStore(errorResponse(message, 400))
     }
 

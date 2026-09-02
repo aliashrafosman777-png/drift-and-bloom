@@ -1,4 +1,3 @@
-// @ts-nocheck
 "use client"
 
 import React, { useState } from 'react'
@@ -17,7 +16,7 @@ import { useProducts } from '../context/ProductContext'
 import { useCart } from '../context/CartContext'
 import { getBestPlantPair } from '../data/plants'
 import { useToast } from '../components/common/Toast'
-import { Stagger, fadeUp } from '../components/common/Motion'
+import { Stagger } from '../components/common/Motion'
 import { getCollectionImage } from '../utils/collectionImages'
 import OptimizedImage, { MotionOptimizedImage } from '../components/common/OptimizedImage'
 
@@ -25,7 +24,7 @@ export default function ProductDetails() {
   const params = useParams<{ id: string }>()
   const id = params?.id
   const router = useRouter()
-  const { products } = useProducts()
+  const { products, ready, error, refreshProducts } = useProducts()
   const { addToCart } = useCart()
   const { showToast } = useToast()
 
@@ -40,8 +39,23 @@ export default function ProductDetails() {
   const [showPdf,     setShowPdf]     = useState(false)
 
   React.useEffect(() => {
-    if (!product) router.replace('/packages')
-  }, [product, router])
+    if (ready && !error && !product) router.replace('/packages')
+  }, [error, product, ready, router])
+
+  if (!ready) {
+    return <Container className="py-24 text-center text-charcoal/50">Loading package…</Container>
+  }
+
+  if (error) {
+    return (
+      <Container className="py-24 text-center">
+        <p role="alert" className="text-red-600">This package could not be loaded from the database. {error}</p>
+        <button type="button" onClick={() => void refreshProducts()} className="mt-4 text-olive underline">
+          Try again
+        </button>
+      </Container>
+    )
+  }
 
   if (!product) return null
 
@@ -125,7 +139,7 @@ export default function ProductDetails() {
           >
             {/* Illustration side */}
             <div className="shrink-0 w-24 h-24 sm:w-28 sm:h-28 flex items-center justify-center bg-cream/40 p-3">
-              <img
+              <OptimizedImage
                 src="/assets/care-cards-icon.png"
                 alt="Drift & Bloom care illustration"
                 className="w-full h-full object-contain opacity-80 group-hover:opacity-100 transition-opacity duration-500"

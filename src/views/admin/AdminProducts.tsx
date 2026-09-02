@@ -1,38 +1,47 @@
-// @ts-nocheck
 "use client"
 
 import React, { useState } from 'react'
-import { Plus, Search, Edit2, Trash2, Eye, Package, AlertTriangle } from 'lucide-react'
+import { Plus, Search, Edit2, Trash2, Eye, Package, AlertCircle, RefreshCw } from 'lucide-react'
 import Link from 'next/link'
 import RatingStars from '../../components/common/RatingStars'
 import AddProductModal from '../../components/admin/AddProductModal'
 import StatusBadge from '../../components/admin/StatusBadge'
 import { useProducts } from '../../context/ProductContext'
+import type { PackageProduct } from '../../context/ProductContext'
 import OptimizedImage from '../../components/common/OptimizedImage'
 
-function productStatusLabel(p) {
-  if (p.status === 'out_of_stock' || p.status === 'Out of Stock') return 'Out of Stock'
-  if (p.status === 'draft' || p.status === 'Draft') return 'Draft'
+function productStatusLabel(p: PackageProduct) {
+  if (p.status === 'out_of_stock') return 'Out of Stock'
+  if (p.status === 'draft') return 'Draft'
   return 'Active'
 }
 
 export default function AdminProducts() {
-  const { products, removeProduct } = useProducts()
+  const { products, loading, ready, error, refreshProducts, removeProduct } = useProducts()
   const [search, setSearch] = useState('')
   const [modalOpen, setModalOpen] = useState(false)
-  const [editProduct, setEditProduct] = useState(null)
+  const [editProduct, setEditProduct] = useState<PackageProduct | null>(null)
+  const [actionError, setActionError] = useState('')
+  const [deletingId, setDeletingId] = useState('')
 
   const filtered = products.filter((p) =>
     p.name.toLowerCase().includes(search.toLowerCase())
   )
 
   const openAdd = () => { setEditProduct(null); setModalOpen(true) }
-  const openEdit = (product) => { setEditProduct(product); setModalOpen(true) }
+  const openEdit = (product: PackageProduct) => { setEditProduct(product); setModalOpen(true) }
   const closeModal = () => { setModalOpen(false); setEditProduct(null) }
 
-  const handleDelete = (id, name) => {
-    if (window.confirm(`Remove "${name}"? This only affects the demo session.`)) {
-      removeProduct(id)
+  const handleDelete = async (id: string, name: string) => {
+    if (!window.confirm(`Remove "${name}" from the database and storefront?`)) return
+    setActionError('')
+    setDeletingId(id)
+    try {
+      await removeProduct(id)
+    } catch (cause) {
+      setActionError(cause instanceof Error ? cause.message : 'The package could not be deleted.')
+    } finally {
+      setDeletingId('')
     }
   }
 
@@ -54,6 +63,18 @@ export default function AdminProducts() {
           <Plus className="w-4 h-4" /> Add Package
         </button>
       </div>
+
+      {(error || actionError) && (
+        <div role="alert" className="flex items-center justify-between gap-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+          <span className="flex items-center gap-2">
+            <AlertCircle className="h-4 w-4 shrink-0" />
+            Packages could not be synchronized: {actionError || error}
+          </span>
+          <button type="button" onClick={() => { setActionError(''); void refreshProducts() }} className="flex items-center gap-1 font-medium underline">
+            <RefreshCw className="h-4 w-4" /> Retry
+          </button>
+        </div>
+      )}
 
       {/* Search */}
       <div className="relative w-full sm:w-72">
@@ -82,7 +103,11 @@ export default function AdminProducts() {
               </tr>
             </thead>
             <tbody>
-              {filtered.length === 0 ? (
+              {loading && !ready ? (
+                <tr>
+                  <td colSpan={7} className="py-16 text-center text-sm text-gray-400">Loading packages from the database…</td>
+                </tr>
+              ) : filtered.length === 0 ? (
                 <tr>
                   <td colSpan={7} className="py-16 text-center">
                     <Package className="w-10 h-10 mx-auto mb-3 text-gray-300" />
@@ -131,7 +156,7 @@ export default function AdminProducts() {
                       </div>
                     </td>
                     <td className="py-3 px-4 hidden lg:table-cell">
-                      <RatingStars rating={p.rating} showNumber={false} size="text-xs" />
+                      <RatingStars rating={p.rating} reviews={p.reviews} showNumber={false} size="text-xs" />
                     </td>
                     <td className="py-3 px-4 hidden sm:table-cell">
                       <StatusBadge status={productStatusLabel(p)} />
@@ -156,7 +181,7 @@ export default function AdminProducts() {
                     <td className="py-3 px-4 text-center">
                       <div className="flex items-center justify-center gap-1">
                         <Link
-                          href={`/packages/${p.id}`}
+                          href={`/packages/${p.slug || p.id}`}
                           target="_blank"
                           title="View on store"
                           className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-400 hover:text-olive transition-colors"
@@ -172,8 +197,9 @@ export default function AdminProducts() {
                         </button>
                         <button
                           onClick={() => handleDelete(p.id, p.name)}
+                          disabled={deletingId === p.id}
                           title="Delete"
-                          className="p-1.5 rounded-lg hover:bg-red-50 text-gray-400 hover:text-red-600 transition-colors"
+                          className="p-1.5 rounded-lg hover:bg-red-50 text-gray-400 hover:text-red-600 transition-colors disabled:cursor-wait disabled:opacity-40"
                         >
                           <Trash2 className="w-4 h-4" />
                         </button>

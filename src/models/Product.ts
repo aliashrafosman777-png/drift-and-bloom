@@ -33,6 +33,13 @@ export interface IProduct extends Document {
   mood: string[]
   includes: string[]
   plantOptions: IPlantOption[]
+  packageCollection: string
+  size: '' | 'compact' | 'medium' | 'large'
+  difficulty: '' | 'beginner' | 'intermediate' | 'advanced'
+  light: '' | 'low' | 'medium' | 'bright'
+  watering: '' | 'daily' | 'weekly' | 'biweekly' | 'monthly'
+  petFriendly: boolean
+  airPurifying: boolean
   featured: boolean
   bestSeller: boolean
   isActive: boolean
@@ -90,6 +97,13 @@ const ProductSchema = new Schema<IProduct>(
     mood: { type: [String], default: [] },
     includes: { type: [String], default: [] },
     plantOptions: { type: [PlantOptionSchema], default: [] },
+    packageCollection: { type: String, default: '', trim: true },
+    size: { type: String, enum: ['', 'compact', 'medium', 'large'], default: '' },
+    difficulty: { type: String, enum: ['', 'beginner', 'intermediate', 'advanced'], default: '' },
+    light: { type: String, enum: ['', 'low', 'medium', 'bright'], default: '' },
+    watering: { type: String, enum: ['', 'daily', 'weekly', 'biweekly', 'monthly'], default: '' },
+    petFriendly: { type: Boolean, default: false },
+    airPurifying: { type: Boolean, default: false },
     featured: { type: Boolean, default: false },
     bestSeller: { type: Boolean, default: false, index: true },
     isActive: { type: Boolean, default: true, index: true },

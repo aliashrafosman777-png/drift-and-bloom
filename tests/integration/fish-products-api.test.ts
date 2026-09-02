@@ -436,6 +436,151 @@ describe('fish products API persistence and consistency', () => {
     expect((await listJson(finalList)).data.products).toEqual([])
   }, 180_000)
 
+  it('persists predefined package edits with version checks and every editable field', async () => {
+    const createResponse = await createProduct(request('http://test/api/products', 'POST', {
+      name: 'Integration Return Package',
+      tagline: 'A database-backed package.',
+      description: 'Original package description.',
+      price: 1250,
+      discountPrice: null,
+      stock: 12,
+      sku: 'PKG-RETURN-IT',
+      category: ['best-seller', 'calm'],
+      bestSeller: true,
+      scent: 'Sandalwood + Sage',
+      tags: ['Calm'],
+      image: '/assets/return.jpeg',
+      thumbnail: '/assets/return.jpeg',
+      images: ['/assets/return.jpeg', '/assets/return/1.jpeg'],
+      gallery: ['/assets/return/1.jpeg'],
+      status: 'active',
+      packageCollection: 'return',
+      size: 'medium',
+      difficulty: 'beginner',
+      light: 'medium',
+      watering: 'weekly',
+      petFriendly: false,
+      airPurifying: false,
+    }, true))
+    expect(createResponse.status).toBe(201)
+    const created = (await productJson(createResponse)).data
+
+    const browserA = await listProducts(request(
+      'http://test/api/products?excludePackageCategory=fish&excludeProductType=builder&limit=100',
+    ))
+    const browserB = await listProducts(request(
+      'http://test/api/products?excludePackageCategory=fish&excludeProductType=builder&limit=100',
+    ))
+    expect((await listJson(browserA)).data.products).toEqual((await listJson(browserB)).data.products)
+    expect(browserA.headers.get('cache-control')).toContain('no-store')
+
+    const missingVersion = await updateProduct(
+      request(`http://test/api/products/${created._id}`, 'PUT', { price: 1300 }, true),
+      { params: Promise.resolve({ id: created._id }) },
+    )
+    expect(missingVersion.status).toBe(428)
+
+    const updateResponse = await updateProduct(
+      request(`http://test/api/products/${created._id}`, 'PUT', {
+        name: 'Integration Return Package Updated',
+        tagline: 'The confirmed updated tagline.',
+        description: 'The confirmed updated description.',
+        price: 1475,
+        discountPrice: 1390,
+        stock: 20,
+        category: ['self-care'],
+        bestSeller: false,
+        scent: 'Cedar + Fig',
+        tags: ['Edited', 'Persistent'],
+        packageCollection: 'renewal',
+        size: 'large',
+        difficulty: 'advanced',
+        light: 'bright',
+        watering: 'biweekly',
+        petFriendly: true,
+        airPurifying: true,
+        version: created.__v,
+      }, true),
+      { params: Promise.resolve({ id: created._id }) },
+    )
+    expect(updateResponse.status).toBe(200)
+    const updated = (await updateResponse.json()).data
+    expect(updated).toMatchObject({
+      _id: created._id,
+      name: 'Integration Return Package Updated',
+      tagline: 'The confirmed updated tagline.',
+      description: 'The confirmed updated description.',
+      price: 1475,
+      discountPrice: 1390,
+      stock: 20,
+      category: ['self-care'],
+      bestSeller: false,
+      scent: 'Cedar + Fig',
+      tags: ['Edited', 'Persistent'],
+      packageCollection: 'renewal',
+      size: 'large',
+      difficulty: 'advanced',
+      light: 'bright',
+      watering: 'biweekly',
+      petFriendly: true,
+      airPurifying: true,
+      status: 'active',
+      isActive: true,
+      __v: created.__v + 1,
+    })
+
+    const staleUpdate = await updateProduct(
+      request(`http://test/api/products/${created._id}`, 'PUT', {
+        price: 1600,
+        version: created.__v,
+      }, true),
+      { params: Promise.resolve({ id: created._id }) },
+    )
+    expect(staleUpdate.status).toBe(409)
+
+    const publicList = await listProducts(request(
+      'http://test/api/products?excludePackageCategory=fish&excludeProductType=builder&limit=100',
+    ))
+    const publicProduct = (await listJson(publicList)).data.products.find(
+      (product) => product._id === created._id,
+    ) as TestProduct & { images: string[] }
+    expect(publicProduct).toMatchObject({ name: 'Integration Return Package Updated', price: 1475 })
+    expect(publicProduct.images).toEqual(['/assets/return.jpeg', '/assets/return/1.jpeg'])
+    expect(publicProduct).not.toHaveProperty('imagePublicIds')
+
+    const deactivateResponse = await updateProduct(
+      request(`http://test/api/products/${created._id}`, 'PUT', {
+        status: 'draft',
+        version: updated.__v,
+      }, true),
+      { params: Promise.resolve({ id: created._id }) },
+    )
+    expect(deactivateResponse.status).toBe(200)
+    const deactivated = (await deactivateResponse.json()).data
+    expect(deactivated).toMatchObject({ status: 'draft', isActive: false })
+
+    const hiddenList = await listProducts(request(
+      'http://test/api/products?excludePackageCategory=fish&excludeProductType=builder&limit=100',
+    ))
+    expect((await listJson(hiddenList)).data.products).toEqual([])
+
+    const adminList = await listProducts(request(
+      'http://test/api/products?excludePackageCategory=fish&excludeProductType=builder&includeInactive=true&limit=100',
+      'GET',
+      undefined,
+      true,
+    ))
+    expect((await listJson(adminList)).data.products).toEqual([
+      expect.objectContaining({ _id: created._id, name: 'Integration Return Package Updated' }),
+    ])
+
+    const deleteResponse = await deleteProduct(
+      request(`http://test/api/products/${created._id}?version=${deactivated.__v}`, 'DELETE', undefined, true),
+      { params: Promise.resolve({ id: created._id }) },
+    )
+    expect(deleteResponse.status).toBe(200)
+  })
+
   it('rejects browser-local base64 image persistence', async () => {
     const response = await createProduct(
       request('http://test/api/products', 'POST', {
