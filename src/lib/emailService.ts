@@ -1,4 +1,5 @@
 import { Resend } from 'resend'
+import { PUBLIC_CONTACT_EMAIL } from '@/lib/siteContact'
 
 let resend: Resend | null = null
 
@@ -742,7 +743,7 @@ export async function sendOrderConfirmationEmail(
                     <p style="margin:0 0 4px;font-size:14px;color:#bbb;">Thank you for choosing <span style="color:#a8b08c;font-weight:600;">Drift &amp; Bloom</span></p>
                     <p style="margin:0 0 14px;font-size:13px;color:#999;">Where every package tells a story.</p>
                     <p style="margin:0;font-size:11px;color:#777;">
-                      <a href="${siteUrl}" style="color:#a8b08c;text-decoration:none;">driftnblooms.com</a> · <a href="mailto:support@driftnblooms.com" style="color:#a8b08c;text-decoration:none;">support@driftnblooms.com</a>
+                      <a href="${siteUrl}" style="color:#a8b08c;text-decoration:none;">driftnblooms.com</a> · <a href="mailto:${PUBLIC_CONTACT_EMAIL}" style="color:#a8b08c;text-decoration:none;">${PUBLIC_CONTACT_EMAIL}</a>
                     </p>
                     <p style="margin:12px 0 0;font-size:10px;color:#555;">© ${new Date().getFullYear()} Drift &amp; Bloom. All rights reserved.</p>
                   </td>

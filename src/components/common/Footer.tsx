@@ -9,6 +9,7 @@ import { FaInstagram, FaTiktok, FaFacebookF } from 'react-icons/fa'
 import Container from './Container'
 import Logo from './Logo'
 import { useToast } from './Toast'
+import { PUBLIC_CONTACT_EMAIL } from '@/lib/siteContact'
 
 const SHOP_LINKS = [
   { label: 'All Packages', to: '/packages' },
@@ -101,7 +102,12 @@ export default function Footer() {
           <div>
             <h4 className="text-xs uppercase tracking-label text-brown mb-4">Stay in Bloom</h4>
             <ul className="space-y-2.5 mb-5">
-              <li className="flex items-center gap-2 text-sm text-cream/70"><FiMail size={14} /> driftandbloom28@gmail.com</li>
+              <li className="flex items-center gap-2 text-sm text-cream/70">
+                <FiMail size={14} />
+                <a href={`mailto:${PUBLIC_CONTACT_EMAIL}`} className="transition-colors hover:text-cream">
+                  {PUBLIC_CONTACT_EMAIL}
+                </a>
+              </li>
               <li className="flex items-center gap-2 text-sm text-cream/70"><FiPhone size={14} /> +20 109 782 4111</li>
               <li className="flex items-center gap-2 text-sm text-cream/70"><FiPhone size={14} /> 01142229915</li>
               <li className="flex items-center gap-2 text-sm text-cream/70"><FiMapPin size={14} /> Cairo, Egypt</li>

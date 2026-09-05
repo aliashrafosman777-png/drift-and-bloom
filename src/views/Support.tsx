@@ -11,6 +11,7 @@ import FAQItem from '../components/support/FAQItem'
 import USPStrip from '../components/common/USPStrip'
 import { useToast } from '../components/common/Toast'
 import { Reveal, Stagger, fadeUp } from '../components/common/Motion'
+import { PUBLIC_CONTACT_EMAIL } from '@/lib/siteContact'
 
 const FAQS = [
   { q: 'How long does it take to get a response?', a: 'Our support team typically replies within 24 hours on business days. Order-related questions are usually answered even faster.' },
@@ -22,7 +23,7 @@ const FAQS = [
 ]
 
 const CONTACT_CARDS = [
-  { icon: FiMail, title: 'Email Us', body: "Send us an email and we'll respond within 24 hours", detail: 'driftandbloom28@gmail.com' },
+  { icon: FiMail, title: 'Email Us', body: "Send us an email and we'll respond within 24 hours", detail: PUBLIC_CONTACT_EMAIL, href: `mailto:${PUBLIC_CONTACT_EMAIL}` },
   { icon: FiPhone, title: 'Call Us', body: 'Non-Stop Service', detail: '+20 109 782 4111\n01142229915' },
   { icon: FiClock, title: 'Business Hours', body: 'Serving You 24/7', detail: '' },
 ]
@@ -144,14 +145,20 @@ export default function Support() {
           </Reveal>
 
           <Stagger className="space-y-5">
-            {CONTACT_CARDS.map(({ icon: Icon, title, body, detail }) => (
+            {CONTACT_CARDS.map(({ icon: Icon, title, body, detail, href }) => (
               <motion.div key={title} variants={fadeUp} whileHover={{ y: -3 }} className="bg-white border border-charcoal/5 rounded-2xl p-6 flex gap-5 shadow-soft">
                 <div className="w-12 h-12 rounded-full bg-beige text-olive flex items-center justify-center shrink-0"><Icon size={20} /></div>
                 <div>
                   <h3 className="font-serif font-semibold text-charcoal text-base">{title}</h3>
                   <p className="text-sm text-charcoal/50 mt-1">{body}</p>
                   {detail && detail.split('\n').map((line) => (
-                    <p key={line} className="text-sm text-brown mt-1 font-medium">{line}</p>
+                    href ? (
+                      <a key={line} href={href} className="mt-1 block text-sm font-medium text-brown hover:underline">
+                        {line}
+                      </a>
+                    ) : (
+                      <p key={line} className="text-sm text-brown mt-1 font-medium">{line}</p>
+                    )
                   ))}
                 </div>
               </motion.div>

@@ -133,6 +133,15 @@ test('public and authenticated read APIs return successful structured responses'
   expect(await protectedResponse.json()).toMatchObject({ success: false })
 })
 
+test('public contact email is consistent and clickable', async ({ page }) => {
+  await page.goto('/support', { waitUntil: 'domcontentloaded' })
+
+  const contactLinks = page.getByRole('link', { name: 'contact@driftnblooms.com' })
+  await expect(contactLinks).toHaveCount(2)
+  await expect(contactLinks.first()).toHaveAttribute('href', 'mailto:contact@driftnblooms.com')
+  await expect(contactLinks.last()).toHaveAttribute('href', 'mailto:contact@driftnblooms.com')
+})
+
 test('soul quiz completes and renders a recommendation without browser errors', async ({ browser }) => {
   const context = await browser.newContext()
   const page = await context.newPage()
