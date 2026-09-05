@@ -3,6 +3,7 @@ import type { Metadata } from 'next'
 import Script from 'next/script'
 import mongoose from 'mongoose'
 import ProductDetails from '@/views/ProductDetails'
+import { effectiveProductPrice } from '@/lib/productPricing'
 import connectDB from '@/lib/mongodb'
 import Product from '@/models/Product'
 
@@ -17,6 +18,7 @@ type PackageMetadataRecord = {
   tagline: string
   description: string
   price: number
+  discountPrice: number | null
   rating: number
   reviewsCount: number
   image: string
@@ -37,7 +39,7 @@ const getPackage = cache(async (id: string): Promise<PackageMetadataRecord | nul
     packageCategory: { $ne: 'fish' },
     productType: { $nin: ['candles', 'plants'] },
   })
-    .select('_id slug name tagline description price rating reviewsCount image')
+    .select('_id slug name tagline description price discountPrice rating reviewsCount image')
     .lean<PackageMetadataRecord>()
 })
 
@@ -95,7 +97,7 @@ export default async function ProductPage({ params }: ProductPageProps) {
         offers: {
           '@type': 'Offer',
           priceCurrency: 'EGP',
-          price: product.price,
+          price: effectiveProductPrice(product.price, product.discountPrice),
           availability: 'https://schema.org/InStock',
           url: `${siteUrl}/packages/${canonicalId}`,
         },

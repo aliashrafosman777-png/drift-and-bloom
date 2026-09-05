@@ -22,6 +22,7 @@ import {
   type ProductStatus,
 } from '@/lib/fishProducts'
 import { useAuth } from '@/context/AuthContext'
+import { effectiveProductPrice } from '@/lib/productPricing'
 
 const LEGACY_STORAGE_KEY = 'db_fish_products_v1'
 const REFRESH_INTERVAL_MS = 60_000
@@ -51,6 +52,10 @@ export type FishProduct = {
   updatedAt: string
 }
 
+export type FishBuilderProduct = FishProduct & {
+  listPrice: number
+}
+
 type FishForm = Record<string, any>
 
 type FishProductContextValue = {
@@ -64,7 +69,7 @@ type FishProductContextValue = {
   getFishProductsBySubCategory: (
     subCategory: FishSubCategory,
     aquaticLifeType?: AquaticLifeType | 'all' | null,
-  ) => FishProduct[]
+  ) => FishBuilderProduct[]
   getAllFishProducts: () => FishProduct[]
 }
 
@@ -368,16 +373,22 @@ export function FishProductProvider({ children }: { children: React.ReactNode })
   const getFishProductsBySubCategory = useCallback((
     subCategory: FishSubCategory,
     aquaticLifeType: AquaticLifeType | 'all' | null = null,
-  ) => fishProducts.filter((product) => {
-    if (!product.isActive || product.status !== 'active') return false
-    if (product.fishSubCategory !== subCategory) return false
-    return (
-      subCategory !== 'aquatic-life' ||
-      !aquaticLifeType ||
-      aquaticLifeType === 'all' ||
-      product.aquaticLifeType === aquaticLifeType
-    )
-  }), [fishProducts])
+  ) => fishProducts
+    .filter((product) => {
+      if (!product.isActive || product.status !== 'active') return false
+      if (product.fishSubCategory !== subCategory) return false
+      return (
+        subCategory !== 'aquatic-life' ||
+        !aquaticLifeType ||
+        aquaticLifeType === 'all' ||
+        product.aquaticLifeType === aquaticLifeType
+      )
+    })
+    .map((product) => ({
+      ...product,
+      listPrice: product.price,
+      price: effectiveProductPrice(product.price, product.discountPrice),
+    })), [fishProducts])
 
   const getAllFishProducts = useCallback(() => fishProducts, [fishProducts])
 

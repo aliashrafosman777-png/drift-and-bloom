@@ -10,6 +10,7 @@ import {
 import ImageUploader from './ImageUploader'
 import { useFishProducts } from '../../context/FishProductContext'
 import OptimizedImage from '../common/OptimizedImage'
+import ProductPrice from '../common/ProductPrice'
 
 // ── Select option lists ──────────────────────────────────────────────────────
 const FISH_SUB_CATEGORY_OPTIONS = [
@@ -51,6 +52,14 @@ function validate(form, images) {
   if (!form.shortDescription.trim()) errors.shortDescription = 'Short description is required.'
   if (!form.price || isNaN(Number(form.price)) || Number(form.price) <= 0)
     errors.price = 'A valid price is required.'
+  if (
+    form.discountPrice !== '' &&
+    (!Number.isFinite(Number(form.discountPrice)) ||
+      Number(form.discountPrice) <= 0 ||
+      Number(form.discountPrice) >= Number(form.price))
+  ) {
+    errors.discountPrice = 'Discount price must be greater than zero and lower than the regular price.'
+  }
   if (images.length === 0)     errors.images = 'At least one image is required.'
   return errors
 }
@@ -122,7 +131,7 @@ export default function AddFishProductModal({ onClose, editProduct = null }) {
     const errs = validate(form, images)
     if (Object.keys(errs).length) {
       setErrors(errs)
-      if (errs.name || errs.shortDescription || errs.price) setTab('basic')
+      if (errs.name || errs.shortDescription || errs.price || errs.discountPrice) setTab('basic')
       else if (errs.images) setTab('images')
       return
     }
@@ -206,7 +215,7 @@ export default function AddFishProductModal({ onClose, editProduct = null }) {
             <div className="flex items-center gap-1 px-7 pt-5 pb-1 overflow-x-auto no-scrollbar">
               {TABS.map((t) => {
                 const hasError =
-                  (t.id === 'basic'  && (errors.name || errors.shortDescription || errors.price)) ||
+                  (t.id === 'basic'  && (errors.name || errors.shortDescription || errors.price || errors.discountPrice)) ||
                   (t.id === 'images' && errors.images)
                 return (
                   <button
@@ -283,6 +292,7 @@ export default function AddFishProductModal({ onClose, editProduct = null }) {
                         label="Discount Price" name="discountPrice" type="number" value={form.discountPrice}
                         onChange={handleChange} placeholder="Optional"
                         hint="Leave blank for no discount"
+                        error={errors.discountPrice}
                       />
                     </div>
                   </FormSection>
@@ -406,9 +416,16 @@ export default function AddFishProductModal({ onClose, editProduct = null }) {
                 <span className="text-xs uppercase tracking-label text-charcoal/40">
                   {form.fishSubCategory === 'aquariums' ? '🐚 Aquariums' : '💧 Aquatic Life'}
                 </span>
-                <span className="font-serif text-lg text-brown">
-                  {form.price ? `EGP ${Number(form.price).toLocaleString()}` : 'EGP —'}
-                </span>
+                {form.price ? (
+                  <ProductPrice
+                    price={Number(form.price)}
+                    discountPrice={form.discountPrice ? Number(form.discountPrice) : null}
+                    currency="EGP"
+                    className="justify-end font-serif"
+                    currentClassName="text-lg text-brown"
+                    originalClassName="text-xs text-charcoal/35 line-through"
+                  />
+                ) : <span className="font-serif text-lg text-brown">EGP —</span>}
               </div>
               {form.tags.length > 0 && (
                 <div className="flex flex-wrap gap-1">

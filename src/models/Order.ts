@@ -4,6 +4,7 @@ export interface IOrderItem {
   product: mongoose.Types.ObjectId | null
   name: string
   price: number
+  listPrice: number | null
   quantity: number
   plantOption: string
   image: string
@@ -56,6 +57,7 @@ const OrderItemSchema = new Schema<IOrderItem>(
     product: { type: Schema.Types.ObjectId, ref: 'Product', default: null },
     name: { type: String, required: true },
     price: { type: Number, required: true },
+    listPrice: { type: Number, default: null },
     quantity: { type: Number, required: true, min: 1 },
     plantOption: { type: String, default: '' },
     image: { type: String, default: '' },

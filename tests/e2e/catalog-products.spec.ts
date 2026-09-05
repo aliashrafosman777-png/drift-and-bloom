@@ -248,9 +248,12 @@ test('Candles and Plants persist across browsers, admin CRUD, restart, and packa
   await storefrontB.getByRole('button', { name: 'Add Cross Browser Essential Candle Updated to package' }).click()
   const summary = storefrontB.getByLabel('Your package summary')
   await expect(summary.getByText('EGP 525', { exact: true }).last()).toBeVisible()
+  await expect(summary.getByLabel('Original price EGP 650').first()).toHaveCSS('text-decoration-line', 'line-through')
   await summary.getByRole('button', { name: /Add Package to Cart/i }).click()
   await expect(storefrontB).toHaveURL(/\/cart$/)
   await expect(storefrontB.getByRole('link', { name: 'Custom Calming Space Package', exact: true })).toBeVisible()
+  await expect(storefrontB.getByText('LE 525', { exact: true }).first()).toBeVisible()
+  await expect(storefrontB.getByLabel('Original price LE 650').first()).toHaveCSS('text-decoration-line', 'line-through')
 
   expect(browserErrors).toEqual([])
   await browserA.close()

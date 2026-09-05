@@ -1,4 +1,5 @@
 import type { ProductStatus } from '@/lib/fishProducts'
+import { effectiveProductPrice } from '@/lib/productPricing'
 
 export const CATALOG_PRODUCT_TYPES = ['candles', 'plants'] as const
 export const CANDLE_CATEGORIES = ['essential', 'signature', 'art'] as const
@@ -109,10 +110,7 @@ export function canonicalizeCatalogProduct<T extends Record<string, unknown>>(da
 }
 
 export function effectiveCatalogPrice(price: unknown, discountPrice: unknown): number {
-  const regular = Number(price)
-  const discount = Number(discountPrice)
-  if (Number.isFinite(discount) && discount > 0 && discount < regular) return discount
-  return Number.isFinite(regular) && regular >= 0 ? regular : 0
+  return effectiveProductPrice(price, discountPrice)
 }
 
 export function safeCatalogProductImage(

@@ -7,6 +7,7 @@ import { ArrowRight, Droplets, Fish, Grid2X2, Minus, PackageOpen, Plus, RotateCc
 import Button from '../common/Button'
 import EmptyPackageIllustration from './EmptyPackageIllustration'
 import OptimizedImage from '../common/OptimizedImage'
+import ProductPrice from '../common/ProductPrice'
 import { fishSubCategories } from '../../data/products'
 
 const fishSetupSteps = [
@@ -179,7 +180,13 @@ export default function PackageSummary({
                           <div className="min-w-0 flex-1">
                             <p className="truncate font-serif text-lg leading-tight text-charcoal">{product.name}</p>
                             <p className="mt-1 text-xs uppercase tracking-label text-charcoal/40">{category.label}</p>
-                            <p className="mt-2 text-sm text-brown">EGP {product.price.toLocaleString()} each</p>
+                            <ProductPrice
+                              price={product.price}
+                              listPrice={product.listPrice}
+                              currency="EGP"
+                              className="mt-2 text-sm"
+                              originalClassName="text-xs text-charcoal/40 line-through"
+                            />
                           </div>
                           <button
                             type="button"
@@ -211,9 +218,14 @@ export default function PackageSummary({
                               <Plus size={12} />
                             </button>
                           </div>
-                          <p className="font-serif text-xl text-charcoal">
-                            EGP {(product.price * quantity).toLocaleString()}
-                          </p>
+                          <ProductPrice
+                            price={product.price * quantity}
+                            listPrice={product.listPrice ? product.listPrice * quantity : null}
+                            currency="EGP"
+                            className="justify-end font-serif"
+                            currentClassName="text-xl text-charcoal"
+                            originalClassName="text-xs text-charcoal/40 line-through"
+                          />
                         </div>
                       </motion.div>
                     ))}

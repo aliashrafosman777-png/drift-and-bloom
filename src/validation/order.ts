@@ -4,6 +4,7 @@ const orderItemSchema = z.object({
   product: z.string().optional().default(''),
   name: z.string().min(1),
   price: z.number().min(0),
+  listPrice: z.number().min(0).nullable().optional().default(null),
   quantity: z.number().int().min(1),
   plantOption: z.string().optional().default(''),
   image: z.string().optional().default(''),

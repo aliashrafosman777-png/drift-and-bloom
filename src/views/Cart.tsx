@@ -35,6 +35,7 @@ import { useAuth } from '../context/AuthContext'
 import { useToast } from '../components/common/Toast'
 import { Reveal, Stagger, fadeUp } from '../components/common/Motion'
 import OptimizedImage from '../components/common/OptimizedImage'
+import ProductPrice from '../components/common/ProductPrice'
 import { apiFetch } from '../lib/api'
 
 const BREADCRUMB_STEPS = ['Cart', 'Information', 'Payment', 'Review']
@@ -244,9 +245,23 @@ function OrderReview({ form, items, subtotal, shipping, total, paymentMethod, in
                   <OptimizedImage src={item.image} alt="" className="h-14 w-14 rounded-xl object-cover" />
                   <div className="min-w-0 flex-1">
                     <p className="truncate font-serif text-lg text-charcoal">{item.isCustomPackage ? item.name : `The ${item.name} Collection`}</p>
-                    <p className="text-xs text-charcoal/45">Qty {item.quantity} × LE {item.price.toLocaleString()}</p>
+                    <div className="flex flex-wrap items-baseline gap-1 text-xs text-charcoal/45">
+                      <span>Qty {item.quantity} ×</span>
+                      <ProductPrice
+                        price={item.price}
+                        listPrice={item.listPrice}
+                        currentClassName="text-charcoal/55"
+                        originalClassName="text-charcoal/35 line-through"
+                      />
+                    </div>
                   </div>
-                  <p className="font-serif text-xl text-brown">LE {(item.price * item.quantity).toLocaleString()}</p>
+                  <ProductPrice
+                    price={item.price * item.quantity}
+                    listPrice={item.listPrice ? item.listPrice * item.quantity : null}
+                    className="justify-end font-serif"
+                    currentClassName="text-xl text-brown"
+                    originalClassName="text-sm text-charcoal/35 line-through"
+                  />
                 </motion.div>
               ))}
             </div>
@@ -341,6 +356,7 @@ export default function Cart() {
           product: item.productId,
           name: item.name,
           price: item.price,
+          listPrice: item.listPrice || null,
           quantity: item.quantity,
           plantOption: item.plantOption || '',
           image: item.image || '',

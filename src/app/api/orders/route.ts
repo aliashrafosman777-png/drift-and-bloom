@@ -12,6 +12,7 @@ import {
 import { getTokenFromRequest, verifyToken } from '@/lib/auth'
 import { sendOrderConfirmationEmail } from '@/lib/emailService'
 import { safeProductImage } from '@/lib/fishProducts'
+import { resolveProductPricing } from '@/lib/productPricing'
 
 /**
  * Try to get the logged-in user ID from the token, or return null for guests.
@@ -158,25 +159,26 @@ export async function POST(req: NextRequest) {
       if (item.isCustomPackage || !item.product || item.product.startsWith('custom-package-')) {
         const packageSelections = []
         let packagePrice = 0
+        let packageListPrice = 0
 
         for (const rawSelection of item.packageSelections) {
           const selection = rawSelection as Record<string, unknown>
           const productId = typeof selection.productId === 'string' ? selection.productId : ''
           const quantity = Math.max(1, Number.parseInt(String(selection.quantity || 1), 10) || 1)
           let selectionPrice = Number(selection.price) || 0
+          let selectionListPrice = Number(selection.listPrice) || selectionPrice
           let resolvedSelection: Record<string, unknown> = { ...selection, quantity }
 
           if (/^[0-9a-fA-F]{24}$/.test(productId)) {
             const product = await Product.findOne({
               _id: productId,
-              packageCategory: 'fish',
               isActive: true,
               deletedAt: null,
-            }).select('_id name price fishSubCategory aquaticLifeType __v').lean()
+            }).select('_id name price discountPrice packageCategory productType candleCategory fishSubCategory aquaticLifeType __v').lean()
 
             if (!product) {
               return errorResponse(
-                'A fish product in this package is no longer available. Please rebuild the package.',
+                'A product in this package is no longer available. Please rebuild the package.',
                 409,
               )
             }
@@ -184,18 +186,23 @@ export async function POST(req: NextRequest) {
             const expectedVersion = Number(selection.productVersion)
             if (Number.isInteger(expectedVersion) && expectedVersion !== product.__v) {
               return errorResponse(
-                'A fish product in this package changed. Please review the latest product and price.',
+                'A product in this package changed. Please review the latest product and price.',
                 409,
               )
             }
 
-            selectionPrice = product.price
+            const pricing = resolveProductPricing(product.price, product.discountPrice)
+            selectionPrice = pricing.effectivePrice
+            selectionListPrice = pricing.regularPrice
             resolvedSelection = {
               ...selection,
               productId: product._id.toString(),
               productVersion: product.__v,
               productName: product.name,
-              price: product.price,
+              price: pricing.effectivePrice,
+              listPrice: pricing.hasDiscount ? pricing.regularPrice : null,
+              productType: product.productType || product.packageCategory,
+              candleCategory: product.candleCategory,
               fishSubCategory: product.fishSubCategory,
               aquaticLifeType: product.aquaticLifeType,
               quantity,
@@ -203,6 +210,7 @@ export async function POST(req: NextRequest) {
           }
 
           packagePrice += selectionPrice * quantity
+          packageListPrice += selectionListPrice * quantity
           packageSelections.push(resolvedSelection)
         }
 
@@ -210,6 +218,7 @@ export async function POST(req: NextRequest) {
           ...item,
           product: null,
           price: packagePrice,
+          listPrice: packageListPrice > packagePrice ? packageListPrice : null,
           packageSelections,
           isCustomPackage: true,
         })
@@ -223,14 +232,16 @@ export async function POST(req: NextRequest) {
             _id: item.product,
             isActive: true,
             deletedAt: null,
-          }).select('_id name price image isActive').lean()
+          }).select('_id name price discountPrice image isActive').lean()
           if (product) {
+            const pricing = resolveProductPricing(product.price, product.discountPrice)
             console.log('[Checkout]   → Resolved by ID:', product.name || item.name)
             resolvedItems.push({
               ...item,
               product: product._id.toString(),
               name: product.name,
-              price: product.price,
+              price: pricing.effectivePrice,
+              listPrice: pricing.hasDiscount ? pricing.regularPrice : null,
               image: safeProductImage(product.image, item.image),
             })
           } else {
@@ -249,14 +260,16 @@ export async function POST(req: NextRequest) {
           slug: item.product,
           isActive: true,
           deletedAt: null,
-        }).select('_id name price image isActive').lean()
+        }).select('_id name price discountPrice image isActive').lean()
         if (product) {
+          const pricing = resolveProductPricing(product.price, product.discountPrice)
           console.log('[Checkout]   → Resolved by slug:', product.name || item.name)
           resolvedItems.push({
             ...item,
             product: product._id.toString(),
             name: product.name,
-            price: product.price,
+            price: pricing.effectivePrice,
+            listPrice: pricing.hasDiscount ? pricing.regularPrice : null,
             image: safeProductImage(product.image, item.image),
           })
         } else {

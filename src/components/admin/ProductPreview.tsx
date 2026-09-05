@@ -6,6 +6,7 @@ const packageFallbackImage = "/assets/package.png";
 import OptimizedImage from '../common/OptimizedImage'
 import type { ProductImageInput } from '@/lib/clientProductImages'
 import type { PackageProductForm } from '@/context/ProductContext'
+import ProductPrice from '../common/ProductPrice'
 
 export default function ProductPreview({ form, images }: {
   form: PackageProductForm
@@ -15,8 +16,6 @@ export default function ProductPreview({ form, images }: {
 
   const name     = form.name     || 'Package Name'
   const tagline  = form.tagline  || 'Short description will appear here...'
-  const price    = form.price    ? `LE ${Number(form.price).toLocaleString()}` : 'LE —'
-  const discount = form.discountPrice ? `LE ${Number(form.discountPrice).toLocaleString()}` : null
   const status   = form.status   || 'active'
   const category = form.categories?.[0] || ''
   const tags     = form.tags || []
@@ -76,12 +75,17 @@ export default function ProductPreview({ form, images }: {
           </div>
 
           {/* Price */}
-          <div className="flex items-center gap-2 mt-3 mb-4">
-            <span className="text-brown font-semibold text-lg">{price}</span>
-            {discount && (
-              <span className="text-charcoal/35 text-sm line-through">{discount}</span>
-            )}
-          </div>
+          {form.price ? (
+            <ProductPrice
+              price={Number(form.price)}
+              discountPrice={form.discountPrice ? Number(form.discountPrice) : null}
+              className="mb-4 mt-3"
+              currentClassName="text-lg font-semibold text-brown"
+              originalClassName="text-sm text-charcoal/35 line-through"
+            />
+          ) : (
+            <p className="mb-4 mt-3 text-lg font-semibold text-brown">LE —</p>
+          )}
 
           {/* Tags */}
           {tags.length > 0 && (

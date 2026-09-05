@@ -6,6 +6,7 @@ import { useCart } from '../../context/CartContext'
 import { useProducts } from '../../context/ProductContext'
 import { useToast } from '../../components/common/Toast'
 import OptimizedImage from '../../components/common/OptimizedImage'
+import ProductPrice from '../../components/common/ProductPrice'
 
 export default function ResultCard({ result, onRetake }) {
   const { main, secondary, isBlended, plant, isPetSafe } = result
@@ -183,6 +184,7 @@ export default function ResultCard({ result, onRetake }) {
       <div className="flex flex-col sm:flex-row items-center gap-3 mt-2">
         <Link
           href={`/packages/${main.id}`}
+          prefetch={false}
           className="flex-1 flex items-center justify-center gap-2 bg-olive hover:bg-olive-dark
             text-cream text-sm font-medium uppercase tracking-label px-6 py-4 rounded-full
             transition duration-300 hover:scale-[1.02] active:scale-[0.98] shadow-sm hover:shadow-lift w-full sm:w-auto"
@@ -191,6 +193,7 @@ export default function ResultCard({ result, onRetake }) {
         </Link>
         <Link
           href="/packages"
+          prefetch={false}
           className="flex-1 flex items-center justify-center gap-2 bg-transparent border border-olive
             text-olive text-sm font-medium uppercase tracking-label px-6 py-4 rounded-full
             transition duration-300 hover:bg-olive hover:text-cream w-full sm:w-auto"
@@ -258,9 +261,13 @@ export default function ResultCard({ result, onRetake }) {
                         </p>
                       )}
                     </div>
-                    <span className="font-serif text-2xl text-brown shrink-0">
-                      LE {product.price.toLocaleString()}
-                    </span>
+                    <ProductPrice
+                      price={product.price}
+                      discountPrice={product.discountPrice}
+                      className="shrink-0 justify-end font-serif"
+                      currentClassName="text-2xl text-brown"
+                      originalClassName="text-sm text-charcoal/40 line-through"
+                    />
                   </div>
 
                   <p className="text-sm text-charcoal/60 leading-relaxed mb-6 flex-1">

@@ -13,6 +13,7 @@ const aquarium = {
   shortDescription: 'Cross-browser aquarium fixture.',
   description: 'Created by the isolated Playwright suite.',
   price: 1000,
+  discountPrice: 850,
   category: ['fish', 'aquariums'],
   subCategory: 'aquariums',
   packageCategory: 'fish',
@@ -66,6 +67,7 @@ test('fish products persist across admin, browser contexts, private context, mut
       ...aquarium,
       name: 'Cross Browser Shrimp',
       price: 150,
+      discountPrice: null,
       category: ['fish', 'aquatic-life', 'shrimp'],
       subCategory: 'aquatic-life',
       fishSubCategory: 'aquatic-life',
@@ -125,7 +127,8 @@ test('fish products persist across admin, browser contexts, private context, mut
   await storefrontB.reload()
   await storefrontB.getByRole('button').filter({ hasText: 'Aquariums' }).click()
   await expect(storefrontB.getByText('Cross Browser Aquarium Updated')).toBeVisible()
-  await expect(storefrontB.getByText('EGP 1,100')).toBeVisible()
+  await expect(storefrontB.getByText('EGP 850', { exact: true })).toBeVisible()
+  await expect(storefrontB.getByLabel('Original price EGP 1,100')).toHaveCSS('text-decoration-line', 'line-through')
 
   const deactivateResponse = await adminPage.request.put(`/api/products/${createdLife._id}`, {
     headers: headers(),
@@ -141,13 +144,56 @@ test('fish products persist across admin, browser contexts, private context, mut
 
   await storefrontB.getByRole('button', { name: 'Add Cross Browser Aquarium Updated to package' }).click()
   await expect(
-    storefrontB.getByLabel('Selected products').getByText('EGP 1,100', { exact: true }),
+    storefrontB.getByLabel('Selected products').getByText('EGP 850', { exact: true }).first(),
   ).toBeVisible()
+  await expect(
+    storefrontB.getByLabel('Selected products').getByLabel('Original price EGP 1,100').first(),
+  ).toHaveCSS('text-decoration-line', 'line-through')
   await storefrontB.getByRole('button', { name: /Add Package to Cart/i }).click()
   await expect(storefrontB).toHaveURL(/\/cart$/)
   await expect(
     storefrontB.getByRole('link', { name: 'Custom Calming Space Package', exact: true }),
   ).toBeVisible()
+  await expect(storefrontB.getByText('LE 850', { exact: true }).first()).toBeVisible()
+  await expect(storefrontB.getByLabel('Original price LE 1,100').first()).toHaveCSS('text-decoration-line', 'line-through')
+
+  const checkoutResponse = await storefrontB.request.post('/api/orders', {
+    data: {
+      fullName: 'Fish Discount Customer',
+      phone: '01000000000',
+      email: 'fish-discount@example.com',
+      items: [{
+        product: '',
+        name: 'Custom Calming Space Package',
+        price: 1,
+        quantity: 1,
+        isCustomPackage: true,
+        packageSelections: [{
+          productId: updatedAquarium._id,
+          productVersion: updatedAquarium.__v,
+          productName: updatedAquarium.name,
+          quantity: 1,
+          price: 1,
+          listPrice: 1,
+        }],
+      }],
+      subtotal: 1,
+      shipping: 0,
+      total: 1,
+      shippingAddress: { street: '10 Test Street', city: 'Cairo' },
+    },
+  })
+  expect(checkoutResponse.status()).toBe(201)
+  expect((await checkoutResponse.json()).data).toMatchObject({
+    subtotal: 850,
+    shipping: 100,
+    total: 950,
+    items: [{
+      price: 850,
+      listPrice: 1100,
+      packageSelections: [{ price: 850, listPrice: 1100 }],
+    }],
+  })
 
   const deleteResponse = await adminPage.request.delete(
     `/api/products/${createdLife._id}?version=${deactivatedLife.__v}`,

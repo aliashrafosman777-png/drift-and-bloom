@@ -246,6 +246,14 @@ function canonicalizeFishProduct<T extends Record<string, unknown>>(data: T) {
     throw new Error('INVALID_AQUATIC_LIFE_TYPE')
   }
 
+  const discountPrice = data.discountPrice == null ? null : Number(data.discountPrice)
+  if (
+    discountPrice !== null &&
+    (!Number.isFinite(discountPrice) || discountPrice <= 0 || discountPrice >= Number(data.price))
+  ) {
+    throw new Error('INVALID_DISCOUNT_PRICE')
+  }
+
   const status = (data.status || 'active') as 'active' | 'draft' | 'out_of_stock'
   return {
     ...data,
@@ -255,6 +263,7 @@ function canonicalizeFishProduct<T extends Record<string, unknown>>(data: T) {
     subCategory: fishSubCategory,
     category: buildFishCategories(fishSubCategory, aquaticLifeType),
     fishKey: buildFishKey(String(data.name || '')),
+    discountPrice,
     status,
     isActive: statusIsStorefrontVisible(status),
     deletedAt: null,

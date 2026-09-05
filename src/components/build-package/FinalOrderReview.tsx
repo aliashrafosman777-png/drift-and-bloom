@@ -6,6 +6,7 @@ import { motion } from 'framer-motion'
 import { CheckCircle2, ChevronLeft, Gift, MapPin, Phone, UserRound } from 'lucide-react'
 import Button from '../common/Button'
 import OptimizedImage from '../common/OptimizedImage'
+import ProductPrice from '../common/ProductPrice'
 
 export default function FinalOrderReview({ categories, selectedItems, customer, total, itemCount, onBack, onConfirm }) {
   return (
@@ -73,13 +74,25 @@ export default function FinalOrderReview({ categories, selectedItems, customer, 
                         <OptimizedImage src={product.image} alt="" className="h-14 w-14 rounded-xl object-cover" />
                         <div className="min-w-0 flex-1">
                           <p className="truncate font-serif text-lg text-charcoal">{product.name}</p>
-                          <p className="text-xs text-charcoal/45">
-                            Qty {quantity} × EGP {product.price.toLocaleString()}
-                          </p>
+                          <div className="flex flex-wrap items-baseline gap-1 text-xs text-charcoal/45">
+                            <span>Qty {quantity} ×</span>
+                            <ProductPrice
+                              price={product.price}
+                              listPrice={product.listPrice}
+                              currency="EGP"
+                              currentClassName="text-charcoal/55"
+                              originalClassName="text-charcoal/35 line-through"
+                            />
+                          </div>
                         </div>
-                        <p className="font-serif text-xl text-brown">
-                          EGP {(product.price * quantity).toLocaleString()}
-                        </p>
+                        <ProductPrice
+                          price={product.price * quantity}
+                          listPrice={product.listPrice ? product.listPrice * quantity : null}
+                          currency="EGP"
+                          className="justify-end font-serif"
+                          currentClassName="text-xl text-brown"
+                          originalClassName="text-xs text-charcoal/35 line-through"
+                        />
                       </motion.div>
                     ))}
                   </div>

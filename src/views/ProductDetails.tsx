@@ -18,6 +18,7 @@ import { getBestPlantPair } from '../data/plants'
 import { useToast } from '../components/common/Toast'
 import { Stagger } from '../components/common/Motion'
 import OptimizedImage, { MotionOptimizedImage } from '../components/common/OptimizedImage'
+import ProductPrice from '../components/common/ProductPrice'
 
 export default function ProductDetails() {
   const params = useParams<{ id: string }>()
@@ -192,9 +193,13 @@ export default function ProductDetails() {
             </p>
           )}
 
-          <p className="font-serif text-3xl text-charcoal mt-7">
-            LE {product.price.toLocaleString()}
-          </p>
+          <ProductPrice
+            price={product.price}
+            discountPrice={product.discountPrice}
+            className="mt-7 font-serif text-3xl"
+            currentClassName="text-brown"
+            originalClassName="text-xl text-charcoal/40 line-through"
+          />
 
           <div className="flex flex-wrap items-center gap-5 mt-5">
             <span className="text-xs uppercase tracking-label text-charcoal/40">Quantity</span>

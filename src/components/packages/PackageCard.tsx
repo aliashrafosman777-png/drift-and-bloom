@@ -8,6 +8,7 @@ import Button from '../common/Button'
 import { fadeUp } from '../common/Motion'
 import { isBestSellerProduct } from '../../data/products'
 import OptimizedImage from '../common/OptimizedImage'
+import ProductPrice from '../common/ProductPrice'
 import type { PackageProduct } from '@/context/ProductContext'
 
 export default function PackageCard({ product }: { product: PackageProduct }) {
@@ -43,7 +44,12 @@ export default function PackageCard({ product }: { product: PackageProduct }) {
         <p className="mt-1.5 line-clamp-2 text-xs text-charcoal/55 sm:text-sm">{product.tagline}</p>
         <div className="mb-3 mt-3 flex flex-col items-start gap-2 sm:mb-4 sm:flex-row sm:items-center sm:justify-between">
           <RatingStars rating={product.rating} reviews={product.reviews} size="text-xs sm:text-sm" />
-          <span className="text-sm font-medium text-brown sm:text-base">LE {product.price.toLocaleString()}</span>
+          <ProductPrice
+            price={product.price}
+            discountPrice={product.discountPrice}
+            className="text-sm sm:text-base"
+            originalClassName="text-xs text-charcoal/40 line-through sm:text-sm"
+          />
         </div>
         <Button href={`/packages/${product.id}`} size="sm" className="mt-auto px-2 text-[10px] sm:px-4 sm:text-xs" fullWidth>
           View Package

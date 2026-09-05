@@ -11,6 +11,7 @@ import {
 } from './FormFields'
 import ImageUploader from './ImageUploader'
 import OptimizedImage from '../common/OptimizedImage'
+import ProductPrice from '../common/ProductPrice'
 import {
   useCatalogProducts,
   type CatalogProduct,
@@ -303,7 +304,16 @@ export default function AddCatalogProductModal({
               <div><h3 className="font-serif text-lg text-charcoal">{form.name || 'Product Name'}</h3><p className="mt-1 line-clamp-2 text-xs text-charcoal/50">{form.shortDescription || 'Short description will appear here...'}</p></div>
               <div className="flex items-center justify-between gap-3">
                 <span className="text-xs uppercase tracking-label text-charcoal/40">{form.productType === 'candles' ? `🕯 ${form.candleCategory || 'Candles'}` : form.productType === 'plants' ? '🌿 Plants' : 'Product type'}</span>
-                <span className="font-serif text-lg text-brown">{form.discountPrice || form.price ? `EGP ${Number(form.discountPrice || form.price).toLocaleString()}` : 'EGP —'}</span>
+                {form.price ? (
+                  <ProductPrice
+                    price={Number(form.price)}
+                    discountPrice={form.discountPrice ? Number(form.discountPrice) : null}
+                    currency="EGP"
+                    className="justify-end font-serif"
+                    currentClassName="text-lg text-brown"
+                    originalClassName="text-xs text-charcoal/35 line-through"
+                  />
+                ) : <span className="font-serif text-lg text-brown">EGP —</span>}
               </div>
               {form.tags.length > 0 && <div className="flex flex-wrap gap-1">{form.tags.slice(0, 4).map((tag) => <span key={tag} className="rounded-full bg-beige px-2 py-0.5 text-[10px] text-charcoal/50">{tag}</span>)}</div>}
               <p className="border-t border-charcoal/8 pt-2 text-center text-[10px] text-charcoal/30">Preview updates as you type</p>

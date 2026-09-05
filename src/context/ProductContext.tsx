@@ -27,6 +27,7 @@ import {
 } from '@/lib/clientProductImages'
 import type { PersistedProductImages, ProductImageInput } from '@/lib/clientProductImages'
 import { useAuth } from '@/context/AuthContext'
+import { effectiveProductPrice } from '@/lib/productPricing'
 
 const PACKAGE_FALLBACK_IMAGE = '/assets/package.png'
 const LEGACY_STORAGE_KEY = 'db_custom_products_v1'
@@ -49,6 +50,7 @@ export type PackageProduct = {
   tagline: string
   description: string
   price: number
+  effectivePrice: number
   discountPrice: number | null
   stock: number
   sku: string
@@ -155,6 +157,8 @@ function normalizeProduct(value: unknown): PackageProduct {
 
   const categories = stringArray(raw.category || raw.categories)
   const status = normalizeStatus(raw.status, raw.isActive)
+  const price = Number(raw.price) || 0
+  const discountPrice = raw.discountPrice == null ? null : Number(raw.discountPrice)
   const images = stringArray(raw.images).filter((value) => !/^data:/i.test(value))
   const gallery = stringArray(raw.gallery).filter((value) => !/^data:/i.test(value))
   const image = typeof raw.image === 'string' && raw.image && !/^data:/i.test(raw.image)
@@ -168,8 +172,9 @@ function normalizeProduct(value: unknown): PackageProduct {
     name: String(raw.name || ''),
     tagline: String(raw.tagline || raw.shortDescription || ''),
     description: String(raw.description || ''),
-    price: Number(raw.price) || 0,
-    discountPrice: raw.discountPrice == null ? null : Number(raw.discountPrice),
+    price,
+    effectivePrice: effectiveProductPrice(price, discountPrice),
+    discountPrice,
     stock: Number(raw.stock) || 0,
     sku: String(raw.sku || ''),
     rating: Number(raw.rating) || 0,

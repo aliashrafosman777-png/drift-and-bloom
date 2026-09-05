@@ -2,11 +2,13 @@
 "use client"
 
 import React, { createContext, useContext, useEffect, useMemo, useState } from 'react'
+import { resolveProductPricing } from '@/lib/productPricing'
 
 type CartLine = {
   productId: string
   name: string
   price: number
+  listPrice?: number | null
   image: string
   scent?: string
   plantOption?: string | null
@@ -19,6 +21,8 @@ type CartProduct = {
   id: string
   name: string
   price: number
+  discountPrice?: number | null
+  listPrice?: number | null
   image: string
   scent?: string
   isCustomPackage?: boolean
@@ -107,12 +111,25 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
   const lineKey = (productId: string, plantOption?: string | null) => `${productId}::${plantOption || 'default'}`
 
   const addToCart = (product: CartProduct, quantity = 1, plantOption: string | null = null) => {
+    const pricing = resolveProductPricing(product.price, product.discountPrice, product.listPrice)
     setItems((prev) => {
       const key = lineKey(product.id, plantOption)
       const existing = prev.find((i) => lineKey(i.productId, i.plantOption) === key)
       if (existing) {
         return prev.map((i) =>
-          lineKey(i.productId, i.plantOption) === key ? { ...i, quantity: i.quantity + quantity } : i,
+          lineKey(i.productId, i.plantOption) === key
+            ? {
+                ...i,
+                name: product.name,
+                price: pricing.effectivePrice,
+                listPrice: pricing.hasDiscount ? pricing.regularPrice : null,
+                image: product.image,
+                scent: product.scent,
+                quantity: i.quantity + quantity,
+                isCustomPackage: Boolean(product.isCustomPackage),
+                packageSelections: product.packageSelections || [],
+              }
+            : i,
         )
       }
       return [
@@ -120,7 +137,8 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
         {
           productId: product.id,
           name: product.name,
-          price: product.price,
+          price: pricing.effectivePrice,
+          listPrice: pricing.hasDiscount ? pricing.regularPrice : null,
           image: product.image,
           scent: product.scent,
           plantOption,

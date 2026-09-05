@@ -54,10 +54,10 @@ export default function Packages() {
     }
     switch (sort) {
       case "price-asc":
-        list = [...list].sort((a, b) => a.price - b.price);
+        list = [...list].sort((a, b) => a.effectivePrice - b.effectivePrice);
         break;
       case "price-desc":
-        list = [...list].sort((a, b) => b.price - a.price);
+        list = [...list].sort((a, b) => b.effectivePrice - a.effectivePrice);
         break;
       case "rating":
         list = [...list].sort((a, b) => b.rating - a.rating);

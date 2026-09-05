@@ -194,11 +194,43 @@ test('package create and edit are confirmed in MongoDB and synchronized across b
 
   await storefrontPage.reload()
   await expectImageSource(storefrontCard.locator('img'), updated.image)
-  await expect(storefrontPage.getByText('LE 1,475', { exact: true })).toBeVisible()
+  await expect(storefrontCard.getByText('LE 1,390', { exact: true })).toBeVisible()
+  await expect(storefrontCard.getByLabel('Original price LE 1,475')).toHaveCSS('text-decoration-line', 'line-through')
   await storefrontPage.goto(`/packages/${updated.slug}`)
   await expect(storefrontPage.getByRole('heading', { name: 'Stillness' })).toBeVisible()
   await expectImageSource(storefrontPage.getByRole('img', { name: 'Stillness Collection' }), updated.image)
   await expect(storefrontPage.getByText('Confirmed updated package description.')).toBeVisible()
+  await expect(storefrontPage.getByText('LE 1,390', { exact: true }).first()).toBeVisible()
+  await expect(storefrontPage.getByLabel('Original price LE 1,475').first()).toHaveCSS('text-decoration-line', 'line-through')
+
+  await storefrontPage.getByRole('button', { name: 'Add to Cart' }).click()
+  await storefrontPage.goto('/cart')
+  await expect(storefrontPage.getByText('The Stillness Collection').first()).toBeVisible()
+  await expect(storefrontPage.getByText('LE 1,390', { exact: true }).first()).toBeVisible()
+  await expect(storefrontPage.getByLabel('Original price LE 1,475').first()).toHaveCSS('text-decoration-line', 'line-through')
+  await expect(storefrontPage.getByText('LE 1,490', { exact: true })).toBeVisible()
+
+  await storefrontPage.getByLabel('Full Name').fill('Discount Checkout Customer')
+  await storefrontPage.getByLabel('Phone Number').fill('01000000000')
+  await storefrontPage.getByLabel('Email Address').fill('discount-checkout@example.com')
+  await storefrontPage.getByLabel('City').fill('Cairo')
+  await storefrontPage.getByLabel('Full Shipping Address').fill('10 Test Street')
+  await storefrontPage.getByRole('button', { name: 'Review Order' }).click()
+  await expect(storefrontPage.getByRole('heading', { name: 'Review Your Order' })).toBeVisible()
+  await storefrontPage.getByRole('button', { name: 'Confirm Order' }).click()
+  await expect(storefrontPage.getByRole('heading', { name: 'Your Drift & Bloom story is being prepared.' })).toBeVisible()
+
+  const ordersResponse = await adminPage.request.get('/api/orders', { headers })
+  expect(ordersResponse.status()).toBe(200)
+  const discountOrder = (await ordersResponse.json()).data.orders.find(
+    (order: { fullName: string }) => order.fullName === 'Discount Checkout Customer',
+  )
+  expect(discountOrder).toMatchObject({
+    subtotal: 1390,
+    shipping: 100,
+    total: 1490,
+    items: [{ name: 'Stillness', price: 1390, listPrice: 1475, quantity: 1 }],
+  })
 
   const controlUrl = process.env.E2E_CONTROL_URL
   if (!controlUrl) throw new Error('E2E_CONTROL_URL was not initialized.')

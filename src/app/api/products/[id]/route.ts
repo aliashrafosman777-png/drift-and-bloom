@@ -150,6 +150,17 @@ export async function PUT(req: NextRequest, { params }: RouteParams) {
         return withNoStore(errorResponse('Aquatic Life products require a valid aquatic life type.', 400))
       }
 
+      const discountPrice = merged.discountPrice == null ? null : Number(merged.discountPrice)
+      if (
+        discountPrice !== null &&
+        (!Number.isFinite(discountPrice) || discountPrice <= 0 || discountPrice >= Number(merged.price))
+      ) {
+        return withNoStore(errorResponse(
+          'Discount price must be greater than zero and lower than the regular price.',
+          400,
+        ))
+      }
+
       const status = (merged.status || (merged.isActive ? 'active' : 'draft')) as
         | 'active'
         | 'draft'
@@ -160,6 +171,7 @@ export async function PUT(req: NextRequest, { params }: RouteParams) {
       changes.aquaticLifeType = fishSubCategory === 'aquatic-life' ? aquaticLifeType : ''
       changes.category = buildFishCategories(fishSubCategory, aquaticLifeType)
       changes.fishKey = buildFishKey(String(merged.name))
+      changes.discountPrice = discountPrice
       changes.status = status
       changes.isActive = statusIsStorefrontVisible(status)
     } else if (

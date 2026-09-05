@@ -6,6 +6,7 @@ import { motion } from 'framer-motion'
 import { Check, Minus, Plus, Sparkles } from 'lucide-react'
 import Button from '../common/Button'
 import OptimizedImage from '../common/OptimizedImage'
+import ProductPrice from '../common/ProductPrice'
 
 export default function ProductChoiceCard({ product, quantity = 0, onAdd, onIncrease, onDecrease }) {
   const isSelected = quantity > 0
@@ -65,10 +66,14 @@ export default function ProductChoiceCard({ product, quantity = 0, onAdd, onIncr
         <div className="flex flex-col justify-between border-t border-charcoal/10 p-5 sm:p-7 md:border-l md:border-t-0">
           <div className="md:text-right">
             <p className="text-xs uppercase tracking-label text-charcoal/40">Price</p>
-            {product.listPrice && product.listPrice > product.price && (
-              <p className="mt-1 text-sm text-charcoal/40 line-through">EGP {product.listPrice.toLocaleString()}</p>
-            )}
-            <p className="mt-1 font-serif text-2xl text-brown">EGP {product.price.toLocaleString()}</p>
+            <ProductPrice
+              price={product.price}
+              listPrice={product.listPrice}
+              currency="EGP"
+              className="mt-1 justify-end font-serif"
+              currentClassName="text-2xl text-brown"
+              originalClassName="text-sm text-charcoal/40 line-through"
+            />
           </div>
 
           <div className="mt-6 space-y-3">

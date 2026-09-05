@@ -146,6 +146,15 @@ describe('fish products API persistence and consistency', () => {
   })
 
   it('persists CRUD, counts, cache invalidation, concurrency, and restart reads', async () => {
+    const invalidDiscountResponse = await createProduct(
+      request('http://test/api/products', 'POST', {
+        ...baseProduct,
+        name: 'Invalid Fish Discount',
+        discountPrice: 900,
+      }, true),
+    )
+    expect(invalidDiscountResponse.status).toBe(400)
+
     const aquariumResponse = await createProduct(
       request('http://test/api/products', 'POST', baseProduct, true),
     )

@@ -7,6 +7,7 @@ import RatingStars from '../common/RatingStars'
 import Button from '../common/Button'
 import { fadeUp } from '../common/Motion'
 import OptimizedImage from '../common/OptimizedImage'
+import ProductPrice from '../common/ProductPrice'
 import type { PackageProduct } from '@/context/ProductContext'
 
 export default function ProductCard({ product }: { product: PackageProduct }) {
@@ -34,7 +35,12 @@ export default function ProductCard({ product }: { product: PackageProduct }) {
       <div className="flex flex-1 flex-col p-3 sm:p-5">
         <h3 className="font-serif text-base text-charcoal sm:text-lg">{product.name}</h3>
         <RatingStars rating={product.rating} reviews={product.reviews} size="text-xs sm:text-sm" />
-        <p className="mb-3 mt-2 text-sm font-medium text-brown sm:mb-4 sm:text-base">LE {product.price.toLocaleString()}</p>
+        <ProductPrice
+          price={product.price}
+          discountPrice={product.discountPrice}
+          className="mb-3 mt-2 text-sm sm:mb-4 sm:text-base"
+          originalClassName="text-xs text-charcoal/40 line-through sm:text-sm"
+        />
         <Button href={`/packages/${product.id}`} variant="outline" size="sm" className="mt-auto px-2 text-[10px] sm:px-4 sm:text-xs" fullWidth>
           View Details
         </Button>

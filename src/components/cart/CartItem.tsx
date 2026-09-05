@@ -7,6 +7,7 @@ import { motion } from 'framer-motion'
 import { Trash2, Sprout, PawPrint, Flame, PackageCheck } from 'lucide-react'
 import QuantitySelector from '../common/QuantitySelector'
 import OptimizedImage from '../common/OptimizedImage'
+import ProductPrice from '../common/ProductPrice'
 
 export default function CartItem({ item, onUpdateQuantity, onRemove }) {
   const itemLink = item.isCustomPackage ? '/build-your-package' : `/packages/${item.productId}`
@@ -72,9 +73,14 @@ export default function CartItem({ item, onUpdateQuantity, onRemove }) {
           <button type="button" onClick={onRemove} className="flex items-center gap-1.5 text-xs text-charcoal/45 hover:text-red-500 transition duration-300">
             <Trash2 size={13} /> Remove
           </button>
-          <motion.p key={item.price * item.quantity} initial={{ opacity: 0.6, y: 2 }} animate={{ opacity: 1, y: 0 }} className="font-medium text-brown whitespace-nowrap">
-            LE {(item.price * item.quantity).toLocaleString()}
-          </motion.p>
+          <motion.div key={item.price * item.quantity} initial={{ opacity: 0.6, y: 2 }} animate={{ opacity: 1, y: 0 }}>
+            <ProductPrice
+              price={item.price * item.quantity}
+              listPrice={item.listPrice ? item.listPrice * item.quantity : null}
+              className="justify-end whitespace-nowrap"
+              originalClassName="text-xs text-charcoal/40 line-through"
+            />
+          </motion.div>
         </div>
       </div>
     </motion.div>

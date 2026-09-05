@@ -148,7 +148,6 @@ export default function BuildPackage() {
   const showFishChooser = isFishCategory && fishSubCategory === null;
   const [aquaticLifeFilter, setAquaticLifeFilter] = useState("all");
   const {
-    fishProducts,
     loading: fishProductsLoading,
     error: fishProductsError,
     refreshFishProducts,
@@ -187,7 +186,10 @@ export default function BuildPackage() {
   // is always reconciled against the current database response before use.
   useEffect(() => {
     if (fishProductsLoading || fishProductsError) return;
-    const activeFish = new Map(fishProducts.filter((product) => product.isActive).map((product) => [product.id, product]));
+    const activeFish = new Map([
+      ...getFishProductsBySubCategory("aquariums"),
+      ...getFishProductsBySubCategory("aquatic-life", "all"),
+    ].map((product) => [product.id, product]));
     selectedList.forEach(({ product, quantity }) => {
       if (product.category !== "fish") return;
       const current = activeFish.get(product.id);
@@ -198,13 +200,14 @@ export default function BuildPackage() {
       if (
         product.version !== current.version ||
         product.price !== current.price ||
+        product.listPrice !== current.listPrice ||
         product.name !== current.name ||
         product.image !== current.image
       ) {
         replaceItem(current, quantity);
       }
     });
-  }, [fishProducts, fishProductsError, fishProductsLoading, removeItem, replaceItem, selectedList]);
+  }, [fishProductsError, fishProductsLoading, getFishProductsBySubCategory, removeItem, replaceItem, selectedList]);
 
   // Candle and Plant selections are also client-side draft state, but their
   // identity, visibility, price, and content are reconciled with MongoDB.
@@ -330,6 +333,10 @@ export default function BuildPackage() {
         id: `custom-package-${Date.now()}`,
         name: "Custom Calming Space Package",
         price: total,
+        listPrice: selectedList.reduce(
+          (sum, line) => sum + Number(line.product.listPrice || line.product.price || 0) * line.quantity,
+          0,
+        ),
         image: selectedList[0]?.product?.image || packageIllustration,
         isCustomPackage: true,
         packageSelections,
