@@ -88,9 +88,42 @@ test('package create and edit are confirmed in MongoDB and synchronized across b
   expect(created).toBeTruthy()
   expect(created.image).toMatch(/^\/api\/images\/[0-9a-f]{24}$/)
 
+  const companionResponse = await adminPage.request.post('/api/products', {
+    headers,
+    data: {
+      name: 'Mobile Companion Package',
+      tagline: 'A second package for the mobile catalog.',
+      description: 'Used to verify the two-column mobile package layout.',
+      price: 900,
+      stock: 5,
+      sku: 'E2E-PACKAGE-2',
+      image: '/assets/package.png',
+      thumbnail: '/assets/package.png',
+      images: ['/assets/package.png'],
+      status: 'active',
+    },
+  })
+  expect(companionResponse.status()).toBe(201)
+  const companion = (await companionResponse.json()).data
+
+  await storefrontPage.setViewportSize({ width: 390, height: 844 })
   await storefrontPage.goto('/packages')
   const storefrontCard = storefrontPage.getByRole('article').filter({ hasText: 'Stillness' })
+  const companionCard = storefrontPage.getByRole('article').filter({ hasText: 'Mobile Companion Package' })
+  await expect(storefrontCard).toBeVisible()
+  await expect(companionCard).toBeVisible()
   await expectImageSource(storefrontCard.locator('img'), created.image)
+  const mobileBoxes = await Promise.all([storefrontCard.boundingBox(), companionCard.boundingBox()])
+  expect(mobileBoxes[0]).not.toBeNull()
+  expect(mobileBoxes[1]).not.toBeNull()
+  expect(Math.abs(mobileBoxes[0]!.y - mobileBoxes[1]!.y)).toBeLessThan(2)
+  expect(Math.abs(mobileBoxes[1]!.x - mobileBoxes[0]!.x)).toBeGreaterThan(100)
+  expect(mobileBoxes[0]!.width).toBeLessThan(190)
+  expect(mobileBoxes[1]!.width).toBeLessThan(190)
+  expect(await storefrontCard.locator('img').evaluate((image) => getComputedStyle(image).objectFit)).toBe('contain')
+
+  await storefrontPage.setViewportSize({ width: 1280, height: 800 })
+  expect(await storefrontCard.locator('img').evaluate((image) => getComputedStyle(image).objectFit)).toBe('cover')
 
   const row = adminPage.getByRole('row').filter({ hasText: 'Stillness' })
   await row.getByTitle('Edit').click()
@@ -185,6 +218,11 @@ test('package create and edit are confirmed in MongoDB and synchronized across b
     { headers },
   )
   expect(deleteResponse.status()).toBe(200)
+  const companionDeleteResponse = await adminPage.request.delete(
+    `/api/products/${companion._id}?version=${companion.__v}`,
+    { headers },
+  )
+  expect(companionDeleteResponse.status()).toBe(200)
   expect(browserErrors).toEqual([])
 
   await adminContext.close()

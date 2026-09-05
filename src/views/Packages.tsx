@@ -160,7 +160,7 @@ export default function Packages() {
             ) : (
               <Stagger
                 key={`${activeCategory}-${sort}-${search}`}
-                className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-5 sm:gap-6"
+                className="grid grid-cols-2 gap-3 sm:gap-6 md:grid-cols-3 lg:grid-cols-4"
               >
                 {filtered.map((product) => (
                   <PackageCard key={product.id} product={product} />

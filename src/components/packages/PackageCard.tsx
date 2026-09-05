@@ -16,13 +16,18 @@ export default function PackageCard({ product }: { product: PackageProduct }) {
       variants={fadeUp}
       whileHover={{ y: -6, scale: 1.02 }}
       transition={{ duration: 0.28, ease: 'easeOut' }}
-      className="group bg-white rounded-2xl overflow-hidden border border-charcoal/5 shadow-card flex flex-col h-full transition duration-300 hover:shadow-lift"
+      className="group flex h-full flex-col overflow-hidden rounded-xl border border-charcoal/5 bg-white shadow-card transition duration-300 hover:shadow-lift sm:rounded-2xl"
     >
-      <Link href={`/packages/${product.id}`} className="relative block overflow-hidden" aria-label={`View ${product.name} package`}>
+      <Link
+        href={`/packages/${product.id}`}
+        className="relative block aspect-[4/3] overflow-hidden bg-beige/30 sm:aspect-auto"
+        aria-label={`View ${product.name} package`}
+      >
         <OptimizedImage
           src={product.image}
           alt={product.name}
-          className="w-full h-48 sm:h-56 object-cover transition duration-700 ease-out group-hover:scale-105"
+          className="h-full w-full object-contain transition duration-700 ease-out group-hover:scale-105 sm:h-56 sm:object-cover"
+          sizes="(max-width: 639px) 46vw, (max-width: 767px) 50vw, (max-width: 1023px) 33vw, 25vw"
           loading="lazy"
           decoding="async"
         />
@@ -33,14 +38,14 @@ export default function PackageCard({ product }: { product: PackageProduct }) {
           </span>
         )}
       </Link>
-      <div className="p-4 sm:p-5 flex flex-col flex-1">
-        <h3 className="font-serif text-xl text-charcoal">{product.name}</h3>
-        <p className="text-charcoal/55 text-sm mt-1.5 line-clamp-2">{product.tagline}</p>
-        <div className="flex items-center justify-between mt-3 mb-4">
-          <RatingStars rating={product.rating} reviews={product.reviews} />
-          <span className="text-brown font-medium">LE {product.price.toLocaleString()}</span>
+      <div className="flex flex-1 flex-col p-3 sm:p-5">
+        <h3 className="font-serif text-base text-charcoal sm:text-xl">{product.name}</h3>
+        <p className="mt-1.5 line-clamp-2 text-xs text-charcoal/55 sm:text-sm">{product.tagline}</p>
+        <div className="mb-3 mt-3 flex flex-col items-start gap-2 sm:mb-4 sm:flex-row sm:items-center sm:justify-between">
+          <RatingStars rating={product.rating} reviews={product.reviews} size="text-xs sm:text-sm" />
+          <span className="text-sm font-medium text-brown sm:text-base">LE {product.price.toLocaleString()}</span>
         </div>
-        <Button href={`/packages/${product.id}`} size="sm" className="mt-auto" fullWidth>
+        <Button href={`/packages/${product.id}`} size="sm" className="mt-auto px-2 text-[10px] sm:px-4 sm:text-xs" fullWidth>
           View Package
         </Button>
       </div>
