@@ -1,4 +1,3 @@
-// @ts-nocheck
 "use client"
 
 import React from 'react'
@@ -7,12 +6,10 @@ import { motion } from 'framer-motion'
 import RatingStars from '../common/RatingStars'
 import Button from '../common/Button'
 import { fadeUp } from '../common/Motion'
-import { getCollectionImage } from '../../utils/collectionImages'
 import OptimizedImage from '../common/OptimizedImage'
+import type { PackageProduct } from '@/context/ProductContext'
 
-export default function ProductCard({ product }) {
-  const cardImage = getCollectionImage(product.name || product.id, product.image)
-
+export default function ProductCard({ product }: { product: PackageProduct }) {
   return (
     <motion.article
       variants={fadeUp}
@@ -22,7 +19,7 @@ export default function ProductCard({ product }) {
     >
       <Link href={`/packages/${product.id}`} className="block overflow-hidden" aria-label={`View ${product.name} details`}>
         <OptimizedImage
-          src={cardImage}
+          src={product.image}
           alt={product.name}
           className="w-full h-44 sm:h-52 object-cover transition duration-700 ease-out group-hover:scale-105"
           loading="lazy"

@@ -5,9 +5,21 @@ const packagePng = Buffer.from(
   'base64',
 )
 
+const updatedPackagePng = Buffer.from(
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADUlEQVR42mP8z8BQDwAFgQIAKx3ZVwAAAABJRU5ErkJggg==',
+  'base64',
+)
+
 function token() {
   if (!process.env.E2E_ADMIN_TOKEN) throw new Error('E2E_ADMIN_TOKEN was not initialized.')
   return process.env.E2E_ADMIN_TOKEN
+}
+
+async function expectImageSource(pageImage: ReturnType<Page['locator']>, source: string) {
+  await expect.poll(async () => {
+    const optimizedSource = await pageImage.getAttribute('src')
+    return decodeURIComponent(optimizedSource || '')
+  }).toContain(source)
 }
 
 async function openAdminPage(page: Page) {
@@ -37,7 +49,8 @@ test('package create and edit are confirmed in MongoDB and synchronized across b
 
   await openAdminPage(adminPage)
   await adminPage.getByRole('button', { name: 'Add Package' }).click()
-  await adminPage.getByLabel('Package Name').fill('Persistent E2E Package')
+  // "Stillness" previously triggered a hard-coded storefront image override.
+  await adminPage.getByLabel('Package Name').fill('Stillness')
   await adminPage.getByLabel('Candle Scent').fill('Sandalwood + Sage')
   await adminPage.getByLabel('Short Description (Tagline)').fill('Created through the real package form.')
   await adminPage.getByLabel('Full Description').fill('Original package description stored in MongoDB.')
@@ -61,7 +74,7 @@ test('package create and edit are confirmed in MongoDB and synchronized across b
   await adminPage.locator('button[form="product-form"]').click()
   await expect(adminPage.getByText('Package added successfully!')).toBeVisible()
   await expect(adminPage.getByRole('dialog')).toHaveCount(0)
-  await expect(adminPage.getByRole('row').filter({ hasText: 'Persistent E2E Package' })).toBeVisible()
+  await expect(adminPage.getByRole('row').filter({ hasText: 'Stillness' })).toBeVisible()
 
   const headers = { Authorization: `Bearer ${token()}` }
   const firstListResponse = await adminPage.request.get(
@@ -70,18 +83,18 @@ test('package create and edit are confirmed in MongoDB and synchronized across b
   )
   expect(firstListResponse.status()).toBe(200)
   const created = (await firstListResponse.json()).data.products.find(
-    (product: { name: string }) => product.name === 'Persistent E2E Package',
+    (product: { name: string }) => product.name === 'Stillness',
   )
   expect(created).toBeTruthy()
   expect(created.image).toMatch(/^\/api\/images\/[0-9a-f]{24}$/)
 
   await storefrontPage.goto('/packages')
-  await expect(storefrontPage.getByText('Persistent E2E Package', { exact: true })).toBeVisible()
+  const storefrontCard = storefrontPage.getByRole('article').filter({ hasText: 'Stillness' })
+  await expectImageSource(storefrontCard.locator('img'), created.image)
 
-  const row = adminPage.getByRole('row').filter({ hasText: 'Persistent E2E Package' })
+  const row = adminPage.getByRole('row').filter({ hasText: 'Stillness' })
   await row.getByTitle('Edit').click()
   await expect(adminPage.getByRole('dialog')).toBeVisible()
-  await adminPage.getByLabel('Package Name').fill('Persistent E2E Package Updated')
   await adminPage.getByLabel('Short Description (Tagline)').fill('Confirmed updated package tagline.')
   await adminPage.getByLabel('Full Description').fill('Confirmed updated package description.')
   await adminPage.getByLabel('Category').selectOption('self-care')
@@ -92,6 +105,13 @@ test('package create and edit are confirmed in MongoDB and synchronized across b
   await adminPage.getByLabel('Candle Scent').fill('Cedar + Fig')
 
   await adminPage.getByRole('button', { name: 'Images', exact: true }).click()
+  await expect(adminPage.getByText('Main', { exact: true })).toBeVisible()
+  await adminPage.getByTitle('Remove').first().click({ force: true })
+  await adminPage.locator('input[type="file"]').setInputFiles({
+    name: 'package-updated.png',
+    mimeType: 'image/png',
+    buffer: updatedPackagePng,
+  })
   await expect(adminPage.getByText('Main', { exact: true })).toBeVisible()
   await adminPage.getByRole('button', { name: 'Product Details', exact: true }).click()
   await adminPage.getByLabel('Package Size').selectOption('large')
@@ -117,7 +137,7 @@ test('package create and edit are confirmed in MongoDB and synchronized across b
   )
   expect(updated).toMatchObject({
     _id: created._id,
-    name: 'Persistent E2E Package Updated',
+    name: 'Stillness',
     tagline: 'Confirmed updated package tagline.',
     description: 'Confirmed updated package description.',
     price: 1475,
@@ -136,13 +156,15 @@ test('package create and edit are confirmed in MongoDB and synchronized across b
     isActive: true,
   })
   expect(updated.__v).toBe(created.__v + 1)
-  expect(updated.image).toBe(created.image)
+  expect(updated.image).toMatch(/^\/api\/images\/[0-9a-f]{24}$/)
+  expect(updated.image).not.toBe(created.image)
 
   await storefrontPage.reload()
-  await expect(storefrontPage.getByText('Persistent E2E Package Updated', { exact: true })).toBeVisible()
+  await expectImageSource(storefrontCard.locator('img'), updated.image)
   await expect(storefrontPage.getByText('LE 1,475', { exact: true })).toBeVisible()
   await storefrontPage.goto(`/packages/${updated.slug}`)
-  await expect(storefrontPage.getByRole('heading', { name: 'Persistent E2E Package Updated' })).toBeVisible()
+  await expect(storefrontPage.getByRole('heading', { name: 'Stillness' })).toBeVisible()
+  await expectImageSource(storefrontPage.getByRole('img', { name: 'Stillness Collection' }), updated.image)
   await expect(storefrontPage.getByText('Confirmed updated package description.')).toBeVisible()
 
   const controlUrl = process.env.E2E_CONTROL_URL
@@ -156,7 +178,7 @@ test('package create and edit are confirmed in MongoDB and synchronized across b
   const afterRestart = (await afterRestartResponse.json()).data.products.find(
     (product: { _id: string }) => product._id === created._id,
   )
-  expect(afterRestart).toMatchObject({ name: 'Persistent E2E Package Updated', price: 1475 })
+  expect(afterRestart).toMatchObject({ name: 'Stillness', image: updated.image, price: 1475 })
 
   const deleteResponse = await adminPage.request.delete(
     `/api/products/${created._id}?version=${afterRestart.__v}`,

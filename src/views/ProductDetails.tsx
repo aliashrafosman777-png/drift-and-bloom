@@ -17,7 +17,6 @@ import { useCart } from '../context/CartContext'
 import { getBestPlantPair } from '../data/plants'
 import { useToast } from '../components/common/Toast'
 import { Stagger } from '../components/common/Motion'
-import { getCollectionImage } from '../utils/collectionImages'
 import OptimizedImage, { MotionOptimizedImage } from '../components/common/OptimizedImage'
 
 export default function ProductDetails() {
@@ -69,10 +68,11 @@ export default function ProductDetails() {
   const { petOption, nonPetOption } = getBestPlantPair(plantCtx)
   const selectedPlant = petFriendly ? petOption : nonPetOption
 
-  const mainCollectionImage = getCollectionImage(product.name || product.id, product.image)
-  const originalGallery = product.gallery || []
-  const remainingGallery = originalGallery.length >= 3 ? originalGallery.slice(1) : originalGallery
-  const gallery = [mainCollectionImage, ...remainingGallery].slice(0, 4)
+  // The database image order is authoritative. Never replace an administrator's
+  // chosen main image with a name-based static asset.
+  const gallery = Array.from(new Set(
+    (product.images.length ? product.images : [product.image, ...product.gallery]).filter(Boolean),
+  )).slice(0, 4)
 
   // Always use MongoDB _id for cart (not slug) — prevents ObjectId cast errors
   const cartProduct = {
